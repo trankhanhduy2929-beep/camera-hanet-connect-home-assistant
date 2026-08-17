@@ -98,7 +98,13 @@ thử tải lại. Có thể cài thủ công theo phần tiếp theo để sử
 
 ## Kích hoạt và đăng nhập
 
-1. Nhập URL máy chủ kích hoạt HTTPS nếu ô này chưa được điền sẵn.
+Máy chủ kích hoạt mặc định đã được cấu hình sẵn:
+
+```text
+https://hanet-license-server.trankhanhduy2929.workers.dev
+```
+
+1. Giữ nguyên URL máy chủ kích hoạt đã điền sẵn.
 2. Nhập license key được cung cấp.
 3. Nếu màn hình báo đang chờ duyệt, gửi **mã cài đặt** hiển thị trên màn hình
    cho đơn vị cấp license. Sau khi được duyệt, bấm gửi lại để tiếp tục.
