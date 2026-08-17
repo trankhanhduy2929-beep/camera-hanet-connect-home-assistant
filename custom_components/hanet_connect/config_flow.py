@@ -23,7 +23,6 @@ from .api import (
 from .const import (
     CONF_API_BASE,
     CONF_LICENSE_KEY,
-    CONF_LICENSE_SERVER_URL,
     CONF_SCAN_INTERVAL,
     CONF_VERIFY_TLS,
     DEFAULT_API_BASE,
@@ -84,24 +83,8 @@ def _license_error_key(code: str) -> str:
     return _LICENSE_ERROR_MAP.get(code, "license_rejected")
 
 
-def _server_url_schema(default: str) -> dict[vol.Marker, Any]:
-    if DEFAULT_LICENSE_SERVER_URL:
-        return {}
-    return {
-        vol.Required(CONF_LICENSE_SERVER_URL, default=default): selector.TextSelector(
-            selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
-        )
-    }
-
-
-def _resolve_server_url(
-    user_input: dict[str, Any], record: HanetStoredLicense | None
-) -> str:
-    candidate = str(
-        user_input.get(CONF_LICENSE_SERVER_URL)
-        or (record.server_url if record else "")
-        or DEFAULT_LICENSE_SERVER_URL
-    )
+def _resolve_server_url(record: HanetStoredLicense | None) -> str:
+    candidate = str((record.server_url if record else "") or DEFAULT_LICENSE_SERVER_URL)
     return normalize_license_server_url(candidate)
 
 
@@ -151,7 +134,7 @@ class HanetConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
-                server_url = _resolve_server_url(user_input, record)
+                server_url = _resolve_server_url(record)
                 response = await HanetLicenseClient(
                     self.hass, server_url, identity
                 ).async_activate(str(user_input[CONF_LICENSE_KEY]))
@@ -164,11 +147,10 @@ class HanetConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             except ValueError as err:
                 key = str(err)
-                errors[
-                    CONF_LICENSE_SERVER_URL
-                    if key == "invalid_server_url"
-                    else CONF_LICENSE_KEY
-                ] = key
+                if key == "invalid_server_url":
+                    errors["base"] = key
+                else:
+                    errors[CONF_LICENSE_KEY] = key
             except HanetLicenseConnectionError:
                 errors["base"] = "cannot_connect_license"
             except HanetLicenseResponseError as err:
@@ -186,11 +168,11 @@ class HanetConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     return await self.async_step_activation_pending()
                 errors["base"] = _license_error_key(response.status)
 
-        server_default = record.server_url if record else DEFAULT_LICENSE_SERVER_URL
-        schema = _server_url_schema(server_default)
-        schema[vol.Required(CONF_LICENSE_KEY)] = selector.TextSelector(
-            selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-        )
+        schema = {
+            vol.Required(CONF_LICENSE_KEY): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            )
+        }
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(schema),
@@ -366,7 +348,7 @@ class HanetConnectOptionsFlow(config_entries.OptionsFlow):
             license_key = str(user_input.get(CONF_LICENSE_KEY, "")).strip()
             response: HanetLicenseResponse | None = None
             try:
-                server_url = _resolve_server_url(user_input, record)
+                server_url = _resolve_server_url(record)
                 client = HanetLicenseClient(self.hass, server_url, identity)
                 if license_key:
                     response = await client.async_activate(license_key)
@@ -385,11 +367,10 @@ class HanetConnectOptionsFlow(config_entries.OptionsFlow):
                     )
             except ValueError as err:
                 key = str(err)
-                errors[
-                    CONF_LICENSE_SERVER_URL
-                    if key == "invalid_server_url"
-                    else CONF_LICENSE_KEY
-                ] = key
+                if key == "invalid_server_url":
+                    errors["base"] = key
+                else:
+                    errors[CONF_LICENSE_KEY] = key
             except HanetLicenseConnectionError:
                 errors["base"] = "cannot_connect_license"
             except HanetLicenseResponseError as err:
@@ -418,11 +399,11 @@ class HanetConnectOptionsFlow(config_entries.OptionsFlow):
                 if response is not None:
                     errors["base"] = _license_error_key(response.status)
 
-        server_default = record.server_url if record else DEFAULT_LICENSE_SERVER_URL
-        schema = _server_url_schema(server_default)
-        schema[vol.Optional(CONF_LICENSE_KEY, default="")] = selector.TextSelector(
-            selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-        )
+        schema = {
+            vol.Optional(CONF_LICENSE_KEY, default=""): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            )
+        }
         return self.async_show_form(
             step_id="license",
             data_schema=vol.Schema(schema),

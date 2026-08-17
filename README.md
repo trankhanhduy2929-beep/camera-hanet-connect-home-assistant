@@ -14,7 +14,7 @@ Custom integration giúp kết nối tài khoản và camera HANET với Home As
 
 - Home Assistant `2025.1.0` trở lên.
 - Tài khoản HANET đang xem được camera trên ứng dụng HANET Connect.
-- URL máy chủ kích hoạt HTTPS và license key do đơn vị cung cấp bản cài gửi.
+- License key do đơn vị cung cấp bản cài gửi.
 - Home Assistant có kết nối Internet để đăng nhập, kích hoạt và nhận dữ liệu.
 
 ## Cài đặt bằng HACS
@@ -98,18 +98,11 @@ thử tải lại. Có thể cài thủ công theo phần tiếp theo để sử
 
 ## Kích hoạt và đăng nhập
 
-Máy chủ kích hoạt mặc định đã được cấu hình sẵn:
-
-```text
-https://hanet-license-server.trankhanhduy2929.workers.dev
-```
-
-1. Giữ nguyên URL máy chủ kích hoạt đã điền sẵn.
-2. Nhập license key được cung cấp.
-3. Nếu màn hình báo đang chờ duyệt, gửi **mã cài đặt** hiển thị trên màn hình
+1. Nhập license key được cung cấp.
+2. Nếu màn hình báo đang chờ duyệt, gửi **mã cài đặt** hiển thị trên màn hình
    cho đơn vị cấp license. Sau khi được duyệt, bấm gửi lại để tiếp tục.
-4. Nhập tài khoản và mật khẩu HANET.
-5. Chờ Home Assistant tải địa điểm, camera, FaceID và sự kiện.
+3. Nhập tài khoản và mật khẩu HANET.
+4. Chờ Home Assistant tải địa điểm, camera, FaceID và sự kiện.
 
 Public signing key dùng để kiểm tra chữ ký license đã được nhúng sẵn trong
 integration. Người dùng không cần tải, nhập hoặc chép thêm file sign key.

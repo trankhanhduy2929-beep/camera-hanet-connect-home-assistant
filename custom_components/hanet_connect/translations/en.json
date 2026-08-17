@@ -4,9 +4,8 @@
     "step": {
       "user": {
         "title": "Activate HANET Connect",
-        "description": "Installation code: {activation_code}. Enter the HTTPS activation server URL supplied by the seller and your license key. Easy Mode binds the first Home Assistant that uses the key. Only a hash derived from the Home Assistant instance ID is sent; HANET account credentials are never sent to the activation server.",
+        "description": "Installation code: {activation_code}. Enter only the license key you received. Easy Mode binds the first Home Assistant that uses the key. Only a hash derived from the Home Assistant instance ID is sent; HANET account credentials are never sent to the activation server.",
         "data": {
-          "license_server_url": "Activation server URL",
           "license_key": "License key"
         }
       },
@@ -48,7 +47,7 @@
       "invalid_license": "The license key is invalid.",
       "invalid_license_key": "Enter a valid license key.",
       "invalid_license_response": "The activation server returned an invalid or unsigned license.",
-      "invalid_server_url": "Enter a valid HTTPS activation server URL using a hostname.",
+      "invalid_server_url": "This build is not configured for activation. Contact the license provider.",
       "invalid_url": "Enter a valid HANET Cloud HTTP(S) API URL.",
       "gateway_not_configured": "Enter the HANET Cloud account for this integration.",
       "license_activation_limit": "This license has reached its installation limit.",
@@ -327,7 +326,6 @@
         "title": "License and activation",
         "description": "Installation code: {activation_code}. Current status: {license_status}. Leave the license key blank to refresh the existing activation, or enter a new key to replace it.",
         "data": {
-          "license_server_url": "Activation server URL",
           "license_key": "New license key (optional)"
         }
       },
@@ -341,7 +339,7 @@
       "invalid_license": "The license key is invalid.",
       "invalid_license_key": "Enter a valid license key.",
       "invalid_license_response": "The activation server returned an invalid or unsigned license.",
-      "invalid_server_url": "Enter a valid HTTPS activation server URL using a hostname.",
+      "invalid_server_url": "This build is not configured for activation. Contact the license provider.",
       "license_activation_limit": "This license has reached its installation limit.",
       "license_deactivated": "This installation was deactivated.",
       "license_expired": "This license has expired.",

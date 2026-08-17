@@ -4,9 +4,8 @@
     "step": {
       "user": {
         "title": "Kích hoạt HANET Connect",
-        "description": "Mã cài đặt: {activation_code}. Nhập URL HTTPS máy chủ kích hoạt do người bán cung cấp và license key. Easy Mode tự gắn key với Home Assistant đầu tiên sử dụng. Server chỉ nhận hash tạo từ instance ID; tài khoản và mật khẩu HANET không bao giờ được gửi tới server kích hoạt.",
+        "description": "Mã cài đặt: {activation_code}. Chỉ cần nhập license key được cung cấp. Easy Mode tự gắn key với Home Assistant đầu tiên sử dụng. Server chỉ nhận hash tạo từ instance ID; tài khoản và mật khẩu HANET không bao giờ được gửi tới server kích hoạt.",
         "data": {
-          "license_server_url": "URL máy chủ kích hoạt",
           "license_key": "License key"
         }
       },
@@ -48,7 +47,7 @@
       "invalid_license": "License key không hợp lệ.",
       "invalid_license_key": "Hãy nhập license key hợp lệ.",
       "invalid_license_response": "Máy chủ kích hoạt trả về giấy phép không hợp lệ hoặc chữ ký không đúng.",
-      "invalid_server_url": "Hãy nhập URL HTTPS máy chủ kích hoạt bằng tên miền hợp lệ.",
+      "invalid_server_url": "Bản cài đặt chưa được cấu hình kích hoạt đúng. Hãy liên hệ đơn vị cấp license.",
       "invalid_url": "Hãy nhập địa chỉ API HANET Cloud HTTP(S) hợp lệ.",
       "gateway_not_configured": "Hãy nhập tài khoản HANET cho custom component.",
       "license_activation_limit": "License này đã đạt giới hạn số Home Assistant được kích hoạt.",
@@ -327,7 +326,6 @@
         "title": "License và kích hoạt",
         "description": "Mã cài đặt: {activation_code}. Trạng thái hiện tại: {license_status}. Để trống license key để làm mới kích hoạt hiện tại, hoặc nhập key mới để thay thế.",
         "data": {
-          "license_server_url": "URL máy chủ kích hoạt",
           "license_key": "License key mới (không bắt buộc)"
         }
       },
@@ -341,7 +339,7 @@
       "invalid_license": "License key không hợp lệ.",
       "invalid_license_key": "Hãy nhập license key hợp lệ.",
       "invalid_license_response": "Máy chủ kích hoạt trả về giấy phép không hợp lệ hoặc chữ ký không đúng.",
-      "invalid_server_url": "Hãy nhập URL HTTPS máy chủ kích hoạt bằng tên miền hợp lệ.",
+      "invalid_server_url": "Bản cài đặt chưa được cấu hình kích hoạt đúng. Hãy liên hệ đơn vị cấp license.",
       "license_activation_limit": "License này đã đạt giới hạn số Home Assistant được kích hoạt.",
       "license_deactivated": "Bản cài đặt này đã được hủy kích hoạt.",
       "license_expired": "License đã hết hạn.",
