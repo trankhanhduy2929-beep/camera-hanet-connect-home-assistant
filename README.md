@@ -18,7 +18,7 @@ Custom integration giúp kết nối tài khoản và camera HANET với Home As
 
 1. Mở **HACS > Integrations**.
 2. Mở menu góc trên bên phải, chọn **Custom repositories**.
-3. Dán địa chỉ repository GitHub chứa integration này.
+3. Dán địa chỉ [repository GitHub chứa integration này](https://github.com/trankhanhduy2929-beep/camera-hanet-connect-home-assistant).
 4. Chọn loại **Integration**, sau đó bấm **Add**.
 5. Tìm **HANET Connect** trong HACS và chọn **Download**.
 6. Khởi động lại Home Assistant.
