@@ -7,6 +7,9 @@
 Custom integration giúp kết nối tài khoản và camera HANET với Home Assistant.
 Đây là dự án cộng đồng, không phải sản phẩm chính thức của HANET.
 
+- **GitHub:** [camera-hanet-connect-home-assistant](https://github.com/trankhanhduy2929-beep/camera-hanet-connect-home-assistant)
+- **Báo lỗi:** [GitHub Issues](https://github.com/trankhanhduy2929-beep/camera-hanet-connect-home-assistant/issues)
+
 ## Yêu cầu
 
 - Home Assistant `2025.1.0` trở lên.
@@ -16,19 +19,63 @@ Custom integration giúp kết nối tài khoản và camera HANET với Home As
 
 ## Cài đặt bằng HACS
 
+[![Mở repository trong HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=trankhanhduy2929-beep&repository=camera-hanet-connect-home-assistant&category=integration)
+
+### Cách 1: Thêm tự động
+
+1. Bấm nút **Mở repository trong HACS** phía trên.
+2. Chọn Home Assistant cần cài đặt.
+3. Xác nhận thêm repository **HANET Connect**.
+4. Chọn **Download**.
+5. Khởi động lại Home Assistant.
+6. Vào **Settings > Devices & services > Add integration**.
+7. Tìm và chọn **HANET Connect**.
+
+### Cách 2: Thêm thủ công
+
 1. Mở **HACS > Integrations**.
 2. Mở menu góc trên bên phải, chọn **Custom repositories**.
-3. Dán địa chỉ repository GitHub chứa integration này ```https://github.com/trankhanhduy2929-beep/camera-hanet-connect-home-assistant```
+3. Dán chính xác URL sau:
+
+   ```text
+   https://github.com/trankhanhduy2929-beep/camera-hanet-connect-home-assistant
+   ```
+
 4. Chọn loại **Integration**, sau đó bấm **Add**.
-5. Tìm **HANET Connect** trong HACS và chọn **Download**.
+5. Mở repository **HANET Connect** vừa thêm và chọn **Download**.
 6. Khởi động lại Home Assistant.
-7. Vào **Settings > Devices & services > Add integration**.
-8. Tìm và chọn **HANET Connect**.
+7. Vào **Settings > Devices & services > Add integration > HANET Connect**.
+
+Repository hiện tải trực tiếp từ nhánh `main`; HACS không cần GitHub Release
+hoặc file asset `hanet_connect.zip`.
+
+## Sửa lỗi HACS không download được
+
+Nếu HACS báo:
+
+```text
+Downloading trankhanhduy2929-beep/camera-hanet-connect-home-assistant
+with version v1.0.0 failed with (Could not download, see log for details)
+```
+
+HACS đang giữ cấu hình cũ từng yêu cầu một GitHub Release `v1.0.0`. Thực hiện:
+
+1. Mở **HACS > Integrations**.
+2. Xóa repository **HANET Connect** khỏi danh sách đã tải nếu đang tồn tại.
+3. Mở **Custom repositories** và xóa URL cũ của repository.
+4. Khởi động lại Home Assistant.
+5. Thêm lại repository bằng nút HACS hoặc URL chính xác ở trên.
+6. Mở repository và chọn **Download** lại.
+
+Nếu vẫn lỗi, mở menu repository trong HACS, chọn **Update information**, sau đó
+thử tải lại. Có thể cài thủ công theo phần tiếp theo để sử dụng ngay.
 
 ## Cài đặt thủ công
 
-1. Tải source ZIP mới nhất của repository và giải nén.
-2. Chép nguyên thư mục:
+1. Tải ZIP nhánh `main` tại
+   [Download source](https://github.com/trankhanhduy2929-beep/camera-hanet-connect-home-assistant/archive/refs/heads/main.zip).
+2. Giải nén file vừa tải.
+3. Chép nguyên thư mục:
 
    ```text
    custom_components/hanet_connect
@@ -40,14 +87,14 @@ Custom integration giúp kết nối tài khoản và camera HANET với Home As
    /config/custom_components/hanet_connect
    ```
 
-3. Kiểm tra đường dẫn cuối cùng có dạng:
+4. Kiểm tra đường dẫn cuối cùng:
 
    ```text
    /config/custom_components/hanet_connect/manifest.json
    ```
 
-4. Khởi động lại Home Assistant.
-5. Vào **Settings > Devices & services > Add integration > HANET Connect**.
+5. Khởi động lại Home Assistant.
+6. Vào **Settings > Devices & services > Add integration > HANET Connect**.
 
 ## Kích hoạt và đăng nhập
 
@@ -103,12 +150,12 @@ Chỉ dùng các lệnh điều khiển với thiết bị mà bạn có quyền
 ### Cài bằng HACS
 
 1. Mở **HACS > Integrations > HANET Connect**.
-2. Chọn bản cập nhật mới nhất.
-3. Khởi động lại Home Assistant sau khi cập nhật.
+2. Mở menu repository và chọn **Update information**.
+3. Chọn bản cập nhật mới nhất rồi khởi động lại Home Assistant.
 
 ### Cài thủ công
 
-1. Tải source ZIP mới nhất.
+1. Tải lại ZIP nhánh `main` từ liên kết **Download source**.
 2. Ghi đè thư mục `/config/custom_components/hanet_connect` bằng thư mục mới.
 3. Khởi động lại Home Assistant.
 
