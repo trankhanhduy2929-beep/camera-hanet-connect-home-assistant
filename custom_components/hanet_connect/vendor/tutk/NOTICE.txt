@@ -1,0 +1,13 @@
+HANET Connect Gateway includes unmodified ThroughTek Kalay/TUTK runtime files
+for Linux amd64, Linux armv7, Linux aarch64, and Windows amd64.
+
+Linux runtime source:
+  https://github.com/mrlt8/docker-wyze-bridge
+  Commit: bf893749b748f142199c9bce14fac44f8a661d6e
+
+Windows development runtime source:
+  https://github.com/miguelangel-nubla/videoP2Proxy
+
+Copyright (C) ThroughTek Co., Ltd. The runtime files are redistributed
+unmodified for personal, non-commercial interoperability. They are provided
+without warranty. See TUTK-LICENSE.txt in this directory.

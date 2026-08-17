@@ -1,0 +1,24 @@
+HANET Connect bundles an unmodified Alpine Linux compatibility runtime so the
+glibc-linked ThroughTek library can run in Home Assistant Core's musl-based
+container. It is loaded only by the isolated P2P child process.
+
+Packages and versions:
+  gcompat 1.1.0-r4 (NCSA)
+  libucontext 1.3.3-r0 (ISC)
+  musl-obstack 1.2.3-r2 (GPL-2.0-or-later)
+
+Binary package source:
+  https://dl-cdn.alpinelinux.org/alpine/v3.23/main/
+
+Alpine package recipes:
+  https://github.com/alpinelinux/aports/tree/3.23-stable/main/gcompat
+  https://github.com/alpinelinux/aports/tree/3.23-stable/main/libucontext
+  https://github.com/alpinelinux/aports/tree/3.23-stable/main/musl-obstack
+
+The complete corresponding upstream source for musl-obstack 1.2.3 is included
+at source/musl-obstack-1.2.3.tar.gz. Its SHA512 matches Alpine's APKBUILD:
+  b2bbed19c4ab2714ca794bdcb1a84fad1af964e884d4f3bbe91c9937ca089d92
+  b8472cb05ebe998a9f5c85cb922b9b458db91eff29077bd099942e1ce18e16cc
+
+See the license files in this directory. These third-party files are provided
+without warranty.

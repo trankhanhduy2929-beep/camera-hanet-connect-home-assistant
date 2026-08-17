@@ -1,0 +1,360 @@
+{
+  "title": "HANET Connect",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Activate HANET Connect",
+        "description": "Installation code: {activation_code}. Enter the HTTPS activation server URL supplied by the seller and your license key. Easy Mode binds the first Home Assistant that uses the key. Only a hash derived from the Home Assistant instance ID is sent; HANET account credentials are never sent to the activation server.",
+        "data": {
+          "license_server_url": "Activation server URL",
+          "license_key": "License key"
+        }
+      },
+      "activation_pending": {
+        "title": "Waiting for approval",
+        "description": "This server uses manual approval. Installation code: {activation_code}. Send this code to the seller, then select Submit after approval."
+      },
+      "account": {
+        "title": "Sign in to HANET Cloud",
+        "description": "Sign in once. Live video connects directly from Home Assistant to each camera over native HANET P2P. Credentials are sent only to HANET Cloud, never to the activation server.",
+        "data": {
+          "username": "HANET username",
+          "password": "HANET password",
+          "scan_interval": "Scan interval (seconds)"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure HANET Connect",
+        "description": "Update the independent HANET account and refresh interval.",
+        "data": {
+          "username": "HANET username",
+          "password": "HANET password",
+          "scan_interval": "Scan interval (seconds)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Sign in to HANET Cloud again",
+        "description": "HANET Cloud rejected the saved credentials. Enter the current account credentials.",
+        "data": {
+          "username": "HANET username",
+          "password": "HANET password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to HANET Cloud.",
+      "cannot_connect_license": "Unable to connect to the activation server.",
+      "invalid_auth": "The HANET username or password is invalid.",
+      "invalid_license": "The license key is invalid.",
+      "invalid_license_key": "Enter a valid license key.",
+      "invalid_license_response": "The activation server returned an invalid or unsigned license.",
+      "invalid_server_url": "Enter a valid HTTPS activation server URL using a hostname.",
+      "invalid_url": "Enter a valid HANET Cloud HTTP(S) API URL.",
+      "gateway_not_configured": "Enter the HANET Cloud account for this integration.",
+      "license_activation_limit": "This license has reached its installation limit.",
+      "license_deactivated": "This installation was deactivated.",
+      "license_expired": "This license has expired.",
+      "license_inactive": "This license is inactive.",
+      "license_pending": "The installation is still waiting for seller approval.",
+      "license_rejected": "The activation request was rejected.",
+      "license_revoked": "This installation was revoked.",
+      "unknown": "HANET returned an unexpected response. Check the Home Assistant log."
+    },
+    "abort": {
+      "already_configured": "This HANET account is already configured.",
+      "reauth_failed": "The HANET config entry no longer exists.",
+      "reauth_successful": "HANET credentials updated successfully.",
+      "reconfigure_successful": "HANET account configuration updated.",
+      "unique_id_mismatch": "The credentials belong to a different HANET account."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "online": {
+        "name": "Camera connection"
+      },
+      "known_person": {
+        "name": "Known person detected"
+      },
+      "stranger": {
+        "name": "Stranger detected"
+      },
+      "media_bridge": {
+        "name": "Direct P2P runtime"
+      }
+    },
+    "camera": {
+      "camera": {
+        "name": "Camera"
+      }
+    },
+    "sensor": {
+      "gateway_summary": {
+        "name": "HANET devices"
+      },
+      "firmware": {
+        "name": "Firmware"
+      },
+      "model": {
+        "name": "Model"
+      },
+      "ip_address": {
+        "name": "IP address"
+      },
+      "storage_status": {
+        "name": "Storage status"
+      },
+      "wifi_signal": {
+        "name": "Wi-Fi signal"
+      },
+      "resolution": {
+        "name": "Resolution"
+      },
+      "volume": {
+        "name": "Volume"
+      },
+      "sd_free_space": {
+        "name": "SD free space"
+      },
+      "sd_total_space": {
+        "name": "SD total space"
+      },
+      "last_event": {
+        "name": "Latest event"
+      },
+      "last_person": {
+        "name": "Latest person"
+      },
+      "event_type": {
+        "name": "Event type"
+      },
+      "recognition_result": {
+        "name": "Recognition result"
+      },
+      "recognition_time": {
+        "name": "Recognition time"
+      },
+      "faceids": {
+        "name": "FaceIDs"
+      },
+      "employees": {
+        "name": "Employees"
+      },
+      "visitors": {
+        "name": "Visitors"
+      },
+      "departments": {
+        "name": "Departments"
+      }
+    },
+    "event": {
+      "recognition_event": {
+        "name": "Recognition event"
+      }
+    },
+    "image": {
+      "latest_event_image": {
+        "name": "Latest event image"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Restart"
+      },
+      "open_door": {
+        "name": "Open door"
+      },
+      "close_door": {
+        "name": "Close door"
+      },
+      "alarm": {
+        "name": "Start alarm"
+      },
+      "stop_alarm": {
+        "name": "Stop alarm"
+      },
+      "ptz_up": {
+        "name": "Move up"
+      },
+      "ptz_down": {
+        "name": "Move down"
+      },
+      "ptz_left": {
+        "name": "Move left"
+      },
+      "ptz_right": {
+        "name": "Move right"
+      },
+      "ptz_zoom_in": {
+        "name": "Zoom in"
+      },
+      "ptz_zoom_out": {
+        "name": "Zoom out"
+      },
+      "ptz_auto_scan": {
+        "name": "Auto scan"
+      },
+      "ptz_stop": {
+        "name": "Stop PTZ"
+      }
+    },
+    "update": {
+      "firmware": {
+        "name": "Firmware"
+      }
+    },
+    "switch": {
+      "led": {
+        "name": "Logo LED"
+      },
+      "wdr": {
+        "name": "Backlight compensation"
+      },
+      "ir": {
+        "name": "Infrared"
+      },
+      "reverse": {
+        "name": "Flip image"
+      },
+      "record": {
+        "name": "Recording"
+      },
+      "audio_recording": {
+        "name": "Record audio"
+      },
+      "enable_audio": {
+        "name": "Stream audio"
+      },
+      "continuous_recognition": {
+        "name": "Continuous recognition"
+      },
+      "camera_rotate": {
+        "name": "Auto tracking"
+      },
+      "rtsp_enable": {
+        "name": "RTSP"
+      },
+      "mqtt_bind": {
+        "name": "MQTT binding"
+      },
+      "mqtt_use": {
+        "name": "MQTT"
+      },
+      "ptz_enabled": {
+        "name": "PTZ"
+      },
+      "notification_device": {
+        "name": "Device notifications"
+      },
+      "notification_device_status": {
+        "name": "Status notifications"
+      },
+      "notification_employee": {
+        "name": "Employee notifications"
+      },
+      "notification_employee_checkin": {
+        "name": "Employee check-in notifications"
+      },
+      "notification_event": {
+        "name": "Event notifications"
+      },
+      "notification_event_checkin": {
+        "name": "Event check-in notifications"
+      },
+      "notification_human": {
+        "name": "Person notifications"
+      },
+      "notification_stranger": {
+        "name": "Stranger notifications"
+      },
+      "notification_stranger_checkin": {
+        "name": "Stranger check-in notifications"
+      },
+      "notification_visitor": {
+        "name": "Visitor notifications"
+      },
+      "notification_voice_call": {
+        "name": "Voice call notifications"
+      },
+      "notification_alarm_voice": {
+        "name": "Alarm call notifications"
+      },
+      "security_mode": {
+        "name": "Security mode"
+      },
+      "person_detection": {
+        "name": "Person detection"
+      },
+      "pet_detection": {
+        "name": "Pet detection"
+      },
+      "fall_detection": {
+        "name": "Fall detection"
+      }
+    },
+    "number": {
+      "recognition_distance": {
+        "name": "Recognition distance"
+      },
+      "distance": {
+        "name": "Recognition distance"
+      },
+      "recognition_level": {
+        "name": "Recognition level"
+      },
+      "recognition_threshold": {
+        "name": "Recognition threshold"
+      },
+      "human_time": {
+        "name": "Time between recognitions"
+      }
+    },
+    "select": {
+      "quality": {
+        "name": "Video quality"
+      },
+      "storage": {
+        "name": "Storage"
+      },
+      "recognition_area": {
+        "name": "Recognition area"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "license": {
+        "title": "License and activation",
+        "description": "Installation code: {activation_code}. Current status: {license_status}. Leave the license key blank to refresh the existing activation, or enter a new key to replace it.",
+        "data": {
+          "license_server_url": "Activation server URL",
+          "license_key": "New license key (optional)"
+        }
+      },
+      "license_pending": {
+        "title": "Waiting for approval",
+        "description": "This server uses manual approval. Installation code: {activation_code}. Send this code to the seller, then select Submit after approval."
+      }
+    },
+    "error": {
+      "cannot_connect_license": "Unable to connect to the activation server.",
+      "invalid_license": "The license key is invalid.",
+      "invalid_license_key": "Enter a valid license key.",
+      "invalid_license_response": "The activation server returned an invalid or unsigned license.",
+      "invalid_server_url": "Enter a valid HTTPS activation server URL using a hostname.",
+      "license_activation_limit": "This license has reached its installation limit.",
+      "license_deactivated": "This installation was deactivated.",
+      "license_expired": "This license has expired.",
+      "license_inactive": "This license is inactive.",
+      "license_key_required": "Enter a license key to activate this installation.",
+      "license_pending": "The installation is still waiting for seller approval.",
+      "license_rejected": "The activation request was rejected.",
+      "license_revoked": "This installation was revoked."
+    }
+  },
+  "exceptions": {
+    "license_unavailable": {
+      "message": "HANET Connect license unavailable ({license_error}). Installation code: {activation_code}. Open the integration options to activate this Home Assistant instance."
+    }
+  }
+}

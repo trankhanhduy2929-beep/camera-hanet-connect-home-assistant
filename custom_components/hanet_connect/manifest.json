@@ -1,0 +1,12 @@
+{
+  "domain": "hanet_connect",
+  "name": "HANET Connect",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://developers.hanet.ai/document",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "version": "1.0.0",
+  "requirements": []
+}

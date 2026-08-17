@@ -1,0 +1,264 @@
+call_endpoint:
+  name: Call catalog endpoint
+  description: Call any endpoint exposed by the HANET Connect add-on catalog.
+  fields:
+    config_entry_id:
+      name: Config entry
+      description: Required only when more than one HANET gateway is configured.
+      required: false
+      selector:
+        text:
+    endpoint:
+      name: Endpoint
+      description: Endpoint name shown in the add-on API catalog.
+      required: true
+      example: person_list
+      selector:
+        text:
+    payload:
+      name: Payload
+      description: JSON-compatible parameters sent to HANET.
+      required: false
+      default: {}
+      selector:
+        object:
+
+send_command:
+  name: Send device command
+  description: Send a door, alarm or PTZ command through the add-on.
+  fields:
+    config_entry_id:
+      name: Config entry
+      required: false
+      selector:
+        text:
+    device_id:
+      name: HANET device ID
+      required: true
+      selector:
+        text:
+    command:
+      name: Command
+      required: true
+      selector:
+        select:
+          options:
+            - open_door
+            - close_door
+            - alarm
+            - stop_alarm
+            - up
+            - down
+            - left
+            - right
+            - leftUp
+            - rightUp
+            - leftDown
+            - rightDown
+            - zoomIn
+            - zoomOut
+            - autoScan
+            - stop
+            - presetSet
+            - presetGo
+    options:
+      name: Options
+      description: Optional command arguments, such as a PTZ preset number.
+      required: false
+      default: {}
+      selector:
+        object:
+
+set_setting:
+  name: Set device setting
+  description: Set a HANET setting that is not represented by an entity.
+  fields:
+    config_entry_id:
+      name: Config entry
+      required: false
+      selector:
+        text:
+    device_id:
+      name: HANET device ID
+      required: true
+      selector:
+        text:
+    setting:
+      name: Setting
+      required: true
+      example: recognition_threshold
+      selector:
+        text:
+    value:
+      name: Value
+      required: true
+      selector:
+        object:
+
+refresh:
+  name: Refresh gateway
+  description: Fetch fresh devices, status and optionally all settings.
+  fields:
+    config_entry_id:
+      name: Config entry
+      required: false
+      selector:
+        text:
+    include_settings:
+      name: Include settings
+      required: false
+      default: false
+      selector:
+        boolean:
+
+history:
+  name: Lịch sử ghi hình
+  description: Trả về các clip cloud của một camera trong ngày được chọn.
+  fields:
+    config_entry_id:
+      name: Cấu hình HANET
+      required: false
+      selector:
+        text:
+    device_id:
+      name: Camera
+      required: true
+      selector:
+        text:
+    day:
+      name: Ngày
+      required: true
+      selector:
+        date:
+
+faceid_create:
+  name: Thêm FaceID
+  description: Tạo một hồ sơ FaceID từ ảnh JPEG hoặc PNG trong thư mục được Home Assistant cho phép.
+  fields:
+    name:
+      name: Tên hiển thị
+      required: true
+      selector:
+        text:
+    place_id:
+      name: Mã địa điểm
+      required: true
+      selector:
+        text:
+    image_path:
+      name: Đường dẫn ảnh
+      required: true
+      selector:
+        text:
+    person_type:
+      name: Loại hồ sơ
+      required: false
+      default: 0
+      selector:
+        select:
+          options:
+            - label: Nhân viên
+              value: 0
+            - label: Khách
+              value: 1
+    alias_id:
+      name: Mã nhân sự
+      required: false
+      selector:
+        text:
+    department_id:
+      name: Mã phòng ban
+      required: false
+      selector:
+        text:
+
+faceid_update:
+  name: Cập nhật FaceID
+  description: Sửa thông tin và tùy chọn thay ảnh khuôn mặt của một hồ sơ.
+  fields:
+    person_id:
+      name: Mã FaceID
+      required: true
+      selector:
+        text:
+    name:
+      name: Tên hiển thị
+      required: false
+      selector:
+        text:
+    place_id:
+      name: Mã địa điểm
+      required: false
+      selector:
+        text:
+    image_path:
+      name: Ảnh khuôn mặt mới
+      required: false
+      selector:
+        text:
+    person_type:
+      name: Loại hồ sơ
+      required: false
+      selector:
+        select:
+          options:
+            - label: Nhân viên
+              value: 0
+            - label: Khách
+              value: 1
+    alias_id:
+      name: Mã nhân sự
+      required: false
+      selector:
+        text:
+    department_id:
+      name: Mã phòng ban
+      required: false
+      selector:
+        text:
+
+faceid_delete:
+  name: Xóa FaceID
+  description: Xóa một hồ sơ FaceID khỏi HANET Cloud.
+  fields:
+    person_id:
+      name: Mã FaceID
+      required: true
+      selector:
+        text:
+    place_id:
+      name: Mã địa điểm
+      required: false
+      selector:
+        text:
+
+faceid_bulk_create:
+  name: Thêm nhiều FaceID
+  description: Tạo nhiều hồ sơ; tên mặc định được lấy từ tên từng tệp ảnh.
+  fields:
+    place_id:
+      name: Mã địa điểm
+      required: true
+      selector:
+        text:
+    image_paths:
+      name: Danh sách đường dẫn ảnh
+      required: true
+      selector:
+        object:
+    person_type:
+      name: Loại hồ sơ
+      required: false
+      default: 0
+      selector:
+        select:
+          options:
+            - label: Nhân viên
+              value: 0
+            - label: Khách
+              value: 1
+    department_id:
+      name: Mã phòng ban
+      required: false
+      selector:
+        text:

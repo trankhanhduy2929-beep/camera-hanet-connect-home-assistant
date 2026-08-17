@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+node_modules/
+.wrangler/
+.vercel/
+.env
+.env.*
+!*.env.example
+/hanet-license-secrets/
+

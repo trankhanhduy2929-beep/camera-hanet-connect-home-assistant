@@ -1,0 +1,360 @@
+{
+  "title": "HANET Connect",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Kích hoạt HANET Connect",
+        "description": "Mã cài đặt: {activation_code}. Nhập URL HTTPS máy chủ kích hoạt do người bán cung cấp và license key. Easy Mode tự gắn key với Home Assistant đầu tiên sử dụng. Server chỉ nhận hash tạo từ instance ID; tài khoản và mật khẩu HANET không bao giờ được gửi tới server kích hoạt.",
+        "data": {
+          "license_server_url": "URL máy chủ kích hoạt",
+          "license_key": "License key"
+        }
+      },
+      "activation_pending": {
+        "title": "Đang chờ duyệt",
+        "description": "Server đang dùng chế độ duyệt tay. Mã cài đặt: {activation_code}. Gửi mã này cho người bán, sau đó bấm Gửi khi đã được duyệt."
+      },
+      "account": {
+        "title": "Đăng nhập HANET Cloud",
+        "description": "Chỉ cần đăng nhập một lần. Home Assistant kết nối P2P trực tiếp tới camera. Tài khoản và mật khẩu chỉ được gửi tới HANET Cloud, không gửi tới server kích hoạt.",
+        "data": {
+          "username": "Tài khoản HANET",
+          "password": "Mật khẩu HANET",
+          "scan_interval": "Chu kỳ cập nhật (giây)"
+        }
+      },
+      "reconfigure": {
+        "title": "Cấu hình lại HANET Connect",
+        "description": "Cập nhật tài khoản HANET và chu kỳ đồng bộ.",
+        "data": {
+          "username": "Tài khoản HANET",
+          "password": "Mật khẩu HANET",
+          "scan_interval": "Chu kỳ cập nhật (giây)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Đăng nhập lại HANET Cloud",
+        "description": "HANET Cloud đã từ chối thông tin đang lưu. Hãy nhập lại tài khoản hiện tại.",
+        "data": {
+          "username": "Tài khoản HANET",
+          "password": "Mật khẩu HANET"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Không thể kết nối đến HANET Cloud.",
+      "cannot_connect_license": "Không thể kết nối tới máy chủ kích hoạt.",
+      "invalid_auth": "Tài khoản hoặc mật khẩu HANET không đúng.",
+      "invalid_license": "License key không hợp lệ.",
+      "invalid_license_key": "Hãy nhập license key hợp lệ.",
+      "invalid_license_response": "Máy chủ kích hoạt trả về giấy phép không hợp lệ hoặc chữ ký không đúng.",
+      "invalid_server_url": "Hãy nhập URL HTTPS máy chủ kích hoạt bằng tên miền hợp lệ.",
+      "invalid_url": "Hãy nhập địa chỉ API HANET Cloud HTTP(S) hợp lệ.",
+      "gateway_not_configured": "Hãy nhập tài khoản HANET cho custom component.",
+      "license_activation_limit": "License này đã đạt giới hạn số Home Assistant được kích hoạt.",
+      "license_deactivated": "Bản cài đặt này đã được hủy kích hoạt.",
+      "license_expired": "License đã hết hạn.",
+      "license_inactive": "License đang bị khóa.",
+      "license_pending": "Bản cài đặt vẫn đang chờ người bán duyệt.",
+      "license_rejected": "Yêu cầu kích hoạt đã bị từ chối.",
+      "license_revoked": "Bản cài đặt này đã bị thu hồi.",
+      "unknown": "HANET trả về lỗi không xác định. Hãy xem log Home Assistant."
+    },
+    "abort": {
+      "already_configured": "Tài khoản HANET này đã được cấu hình.",
+      "reauth_failed": "Config entry HANET không còn tồn tại.",
+      "reauth_successful": "Đã cập nhật thông tin đăng nhập HANET.",
+      "reconfigure_successful": "Đã cập nhật cấu hình tài khoản HANET.",
+      "unique_id_mismatch": "Thông tin đăng nhập thuộc một tài khoản HANET khác."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "online": {
+        "name": "Kết nối camera"
+      },
+      "known_person": {
+        "name": "Phát hiện người quen"
+      },
+      "stranger": {
+        "name": "Phát hiện người lạ"
+      },
+      "media_bridge": {
+        "name": "P2P trực tiếp"
+      }
+    },
+    "camera": {
+      "camera": {
+        "name": "Camera"
+      }
+    },
+    "sensor": {
+      "gateway_summary": {
+        "name": "Thiết bị HANET"
+      },
+      "firmware": {
+        "name": "Phiên bản phần mềm"
+      },
+      "model": {
+        "name": "Dòng camera"
+      },
+      "ip_address": {
+        "name": "Địa chỉ IP"
+      },
+      "storage_status": {
+        "name": "Trạng thái lưu trữ"
+      },
+      "wifi_signal": {
+        "name": "Tín hiệu Wi-Fi"
+      },
+      "resolution": {
+        "name": "Độ phân giải"
+      },
+      "volume": {
+        "name": "Âm lượng"
+      },
+      "sd_free_space": {
+        "name": "Dung lượng SD còn trống"
+      },
+      "sd_total_space": {
+        "name": "Tổng dung lượng SD"
+      },
+      "last_event": {
+        "name": "Sự kiện gần nhất"
+      },
+      "last_person": {
+        "name": "Người gần nhất"
+      },
+      "event_type": {
+        "name": "Loại sự kiện"
+      },
+      "recognition_result": {
+        "name": "Kết quả nhận diện"
+      },
+      "recognition_time": {
+        "name": "Thời gian nhận diện"
+      },
+      "faceids": {
+        "name": "Tổng FaceID"
+      },
+      "employees": {
+        "name": "Nhân viên"
+      },
+      "visitors": {
+        "name": "Khách"
+      },
+      "departments": {
+        "name": "Phòng ban"
+      }
+    },
+    "event": {
+      "recognition_event": {
+        "name": "Sự kiện nhận diện"
+      }
+    },
+    "image": {
+      "latest_event_image": {
+        "name": "Ảnh sự kiện mới nhất"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Khởi động lại"
+      },
+      "open_door": {
+        "name": "Mở cửa"
+      },
+      "close_door": {
+        "name": "Đóng cửa"
+      },
+      "alarm": {
+        "name": "Bật báo động"
+      },
+      "stop_alarm": {
+        "name": "Tắt báo động"
+      },
+      "ptz_up": {
+        "name": "Quay lên"
+      },
+      "ptz_down": {
+        "name": "Quay xuống"
+      },
+      "ptz_left": {
+        "name": "Quay trái"
+      },
+      "ptz_right": {
+        "name": "Quay phải"
+      },
+      "ptz_zoom_in": {
+        "name": "Phóng to"
+      },
+      "ptz_zoom_out": {
+        "name": "Thu nhỏ"
+      },
+      "ptz_auto_scan": {
+        "name": "Quét tự động"
+      },
+      "ptz_stop": {
+        "name": "Dừng quay quét"
+      }
+    },
+    "update": {
+      "firmware": {
+        "name": "Firmware"
+      }
+    },
+    "switch": {
+      "led": {
+        "name": "Đèn logo"
+      },
+      "wdr": {
+        "name": "Bù sáng"
+      },
+      "ir": {
+        "name": "Hồng ngoại"
+      },
+      "reverse": {
+        "name": "Lật hình"
+      },
+      "record": {
+        "name": "Ghi hình"
+      },
+      "audio_recording": {
+        "name": "Ghi âm"
+      },
+      "enable_audio": {
+        "name": "Âm thanh luồng"
+      },
+      "continuous_recognition": {
+        "name": "Nhận diện liên tục"
+      },
+      "camera_rotate": {
+        "name": "Tự động theo dõi"
+      },
+      "rtsp_enable": {
+        "name": "RTSP"
+      },
+      "mqtt_bind": {
+        "name": "Liên kết MQTT"
+      },
+      "mqtt_use": {
+        "name": "MQTT"
+      },
+      "ptz_enabled": {
+        "name": "PTZ"
+      },
+      "notification_device": {
+        "name": "Thông báo thiết bị"
+      },
+      "notification_device_status": {
+        "name": "Thông báo trạng thái"
+      },
+      "notification_employee": {
+        "name": "Thông báo nhân viên"
+      },
+      "notification_employee_checkin": {
+        "name": "Thông báo chấm công nhân viên"
+      },
+      "notification_event": {
+        "name": "Thông báo sự kiện"
+      },
+      "notification_event_checkin": {
+        "name": "Thông báo sự kiện check-in"
+      },
+      "notification_human": {
+        "name": "Thông báo có người"
+      },
+      "notification_stranger": {
+        "name": "Thông báo người lạ"
+      },
+      "notification_stranger_checkin": {
+        "name": "Thông báo người lạ check-in"
+      },
+      "notification_visitor": {
+        "name": "Thông báo khách"
+      },
+      "notification_voice_call": {
+        "name": "Thông báo cuộc gọi"
+      },
+      "notification_alarm_voice": {
+        "name": "Thông báo cuộc gọi báo động"
+      },
+      "security_mode": {
+        "name": "Chế độ an ninh"
+      },
+      "person_detection": {
+        "name": "Phát hiện người"
+      },
+      "pet_detection": {
+        "name": "Phát hiện thú cưng"
+      },
+      "fall_detection": {
+        "name": "Phát hiện té ngã"
+      }
+    },
+    "number": {
+      "recognition_distance": {
+        "name": "Khoảng cách nhận diện"
+      },
+      "distance": {
+        "name": "Khoảng cách nhận diện"
+      },
+      "recognition_level": {
+        "name": "Mức nhận diện"
+      },
+      "recognition_threshold": {
+        "name": "Ngưỡng nhận diện"
+      },
+      "human_time": {
+        "name": "Thời gian giữa hai lần nhận diện"
+      }
+    },
+    "select": {
+      "quality": {
+        "name": "Chất lượng video"
+      },
+      "storage": {
+        "name": "Lưu trữ"
+      },
+      "recognition_area": {
+        "name": "Vùng nhận diện"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "license": {
+        "title": "License và kích hoạt",
+        "description": "Mã cài đặt: {activation_code}. Trạng thái hiện tại: {license_status}. Để trống license key để làm mới kích hoạt hiện tại, hoặc nhập key mới để thay thế.",
+        "data": {
+          "license_server_url": "URL máy chủ kích hoạt",
+          "license_key": "License key mới (không bắt buộc)"
+        }
+      },
+      "license_pending": {
+        "title": "Đang chờ duyệt",
+        "description": "Server đang dùng chế độ duyệt tay. Mã cài đặt: {activation_code}. Gửi mã cho người bán, sau đó bấm Gửi khi đã được duyệt."
+      }
+    },
+    "error": {
+      "cannot_connect_license": "Không thể kết nối tới máy chủ kích hoạt.",
+      "invalid_license": "License key không hợp lệ.",
+      "invalid_license_key": "Hãy nhập license key hợp lệ.",
+      "invalid_license_response": "Máy chủ kích hoạt trả về giấy phép không hợp lệ hoặc chữ ký không đúng.",
+      "invalid_server_url": "Hãy nhập URL HTTPS máy chủ kích hoạt bằng tên miền hợp lệ.",
+      "license_activation_limit": "License này đã đạt giới hạn số Home Assistant được kích hoạt.",
+      "license_deactivated": "Bản cài đặt này đã được hủy kích hoạt.",
+      "license_expired": "License đã hết hạn.",
+      "license_inactive": "License đang bị khóa.",
+      "license_key_required": "Hãy nhập license key để kích hoạt bản cài đặt này.",
+      "license_pending": "Bản cài đặt vẫn đang chờ người bán duyệt.",
+      "license_rejected": "Yêu cầu kích hoạt đã bị từ chối.",
+      "license_revoked": "Bản cài đặt này đã bị thu hồi."
+    }
+  },
+  "exceptions": {
+    "license_unavailable": {
+      "message": "License HANET Connect chưa dùng được ({license_error}). Mã cài đặt: {activation_code}. Mở tùy chọn integration để kích hoạt Home Assistant này."
+    }
+  }
+}
