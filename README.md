@@ -43,11 +43,12 @@ Custom integration giúp kết nối tài khoản và camera HANET với Home As
 
 4. Chọn loại **Integration**, sau đó bấm **Add**.
 5. Mở repository **HANET Connect** vừa thêm và chọn **Download**.
-6. Khởi động lại Home Assistant.
-7. Vào **Settings > Devices & services > Add integration > HANET Connect**.
+6. Kiểm tra HACS đang hiển thị phiên bản `1.0.1` trở lên; không cài `v1.0.0`.
+7. Khởi động lại Home Assistant.
+8. Vào **Settings > Devices & services > Add integration > HANET Connect**.
 
-Repository hiện tải trực tiếp từ nhánh `main`; HACS không cần GitHub Release
-hoặc file asset `hanet_connect.zip`.
+Phiên bản `v1.0.0` là snapshot cũ còn ô URL máy chủ kích hoạt. Chỉ sử dụng
+`v1.0.1` trở lên.
 
 ## Sửa lỗi HACS không download được
 
@@ -58,14 +59,14 @@ Downloading trankhanhduy2929-beep/camera-hanet-connect-home-assistant
 with version v1.0.0 failed with (Could not download, see log for details)
 ```
 
-HACS đang giữ cấu hình cũ từng yêu cầu một GitHub Release `v1.0.0`. Thực hiện:
+HACS đang giữ snapshot cũ của tag `v1.0.0`. Thực hiện:
 
 1. Mở **HACS > Integrations**.
 2. Xóa repository **HANET Connect** khỏi danh sách đã tải nếu đang tồn tại.
 3. Mở **Custom repositories** và xóa URL cũ của repository.
 4. Khởi động lại Home Assistant.
 5. Thêm lại repository bằng nút HACS hoặc URL chính xác ở trên.
-6. Mở repository và chọn **Download** lại.
+6. Mở repository, xác nhận phiên bản là `1.0.1` trở lên rồi chọn **Download**.
 
 Nếu vẫn lỗi, mở menu repository trong HACS, chọn **Update information**, sau đó
 thử tải lại. Có thể cài thủ công theo phần tiếp theo để sử dụng ngay.
@@ -174,7 +175,6 @@ Home Assistant giữ lại.
 
 ### Không kích hoạt được license
 
-- Kiểm tra URL máy chủ bắt đầu bằng `https://` và không có khoảng trắng.
 - Kiểm tra Home Assistant có Internet và ngày giờ hệ thống chính xác.
 - Kiểm tra license key được nhập đầy đủ.
 - Nếu license đang chờ duyệt, bị khóa, hết hạn hoặc đã đủ số máy, liên hệ đơn vị

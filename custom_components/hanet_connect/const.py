@@ -7,10 +7,9 @@ from typing import Final
 from homeassistant.const import Platform
 
 DOMAIN: Final = "hanet_connect"
-INTEGRATION_VERSION: Final = "1.0.0"
+INTEGRATION_VERSION: Final = "1.0.1"
 CONF_API_BASE: Final = "api_base_url"
 CONF_LICENSE_KEY: Final = "license_key"
-CONF_LICENSE_SERVER_URL: Final = "license_server_url"
 CONF_VERIFY_TLS: Final = "verify_tls"
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 DEFAULT_API_BASE: Final = "https://api-camera3.hanet.ai/v4"
