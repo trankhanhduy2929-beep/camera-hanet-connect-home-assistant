@@ -7,7 +7,7 @@ from typing import Final
 from homeassistant.const import Platform
 
 DOMAIN: Final = "hanet_connect"
-INTEGRATION_VERSION: Final = "1.0.1"
+INTEGRATION_VERSION: Final = "1.0.2"
 CONF_API_BASE: Final = "api_base_url"
 CONF_LICENSE_KEY: Final = "license_key"
 CONF_VERIFY_TLS: Final = "verify_tls"

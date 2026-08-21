@@ -8,6 +8,7 @@ from typing import Any, cast
 
 import voluptuous as vol
 from homeassistant.components import persistent_notification
+from homeassistant.components.ffmpeg import get_ffmpeg_manager
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import (
     ATTR_DEVICE_ID,
@@ -428,6 +429,7 @@ async def async_setup_entry(
         session=async_get_clientsession(hass),
         api_base_url=entry.data.get(CONF_API_BASE, DEFAULT_API_BASE),
         verify_tls=bool(entry.data.get(CONF_VERIFY_TLS, True)),
+        ffmpeg_binary=get_ffmpeg_manager(hass).binary,
     )
     coordinator = HanetCoordinator(
         hass,

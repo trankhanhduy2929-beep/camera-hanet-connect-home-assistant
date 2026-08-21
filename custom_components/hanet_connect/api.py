@@ -67,6 +67,7 @@ class HanetGatewayClient:
         session: aiohttp.ClientSession,
         api_base_url: str,
         verify_tls: bool = True,
+        ffmpeg_binary: str = "ffmpeg",
     ) -> None:
         self.username = username.strip()
         self.password = password
@@ -79,7 +80,10 @@ class HanetGatewayClient:
             verify_tls=verify_tls,
             session=session,
         )
-        self.media = MediaBridge(self.client)
+        self.media = MediaBridge(
+            self.client,
+            ffmpeg_binary=ffmpeg_binary,
+        )
         self._settings_cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._places: list[dict[str, Any]] = []
         self._devices: list[dict[str, Any]] = []

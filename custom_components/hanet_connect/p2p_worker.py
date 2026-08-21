@@ -23,9 +23,14 @@ from pathlib import Path
 from typing import Any
 
 _DATA_NOT_READY = -20012
-_INCOMPLETE_FRAME = -20013
-_LOST_FRAME = -20014
-_RETRYABLE = {_DATA_NOT_READY, _INCOMPLETE_FRAME, _LOST_FRAME, -20015, -20016}
+_LOST_FRAME = -20013
+_INCOMPLETE_FRAME = -20014
+_REMOTE_TIMEOUT = -20015
+_SESSION_CLOSED_BY_REMOTE = -20016
+_RETRYABLE = {_DATA_NOT_READY, _INCOMPLETE_FRAME, _LOST_FRAME}
+_AV_CLIENT_TIMEOUT_SECONDS = 15
+_FIRST_FRAME_TIMEOUT_SECONDS = 35
+_FRAME_STALL_TIMEOUT_SECONDS = 20
 _STOP = False
 _VENDOR_ROOT = Path(__file__).with_name("vendor") / "tutk"
 _PTZ_CONTROLS = {
@@ -207,7 +212,7 @@ class NativeTutk:
             config.cb = ctypes.sizeof(config)
             config.iotc_session_id = sid
             config.iotc_channel_id = 0
-            config.timeout_sec = 15
+            config.timeout_sec = _AV_CLIENT_TIMEOUT_SECONDS
             config.account_or_identity = credentials.username.encode("utf-8")
             config.password_or_token = credentials.password.encode("utf-8")
             config.resend = 1
@@ -242,7 +247,7 @@ class NativeTutk:
             sid,
             credentials.username.encode("utf-8"),
             credentials.password.encode("utf-8"),
-            15_000,
+            _AV_CLIENT_TIMEOUT_SECONDS,
             ctypes.byref(server_type),
             0,
             ctypes.byref(resend),
@@ -278,6 +283,20 @@ def _write_all(payload: bytes) -> None:
         view = view[written:]
 
 
+def _annexb_contains_keyframe(payload: bytes) -> bool:
+    """Detect H.264 or HEVC IDR NAL units when frame metadata is absent."""
+    offset = 0
+    while (start := payload.find(b"\0\0\1", offset)) >= 0:
+        nal_offset = start + 3
+        if nal_offset >= len(payload):
+            return False
+        header = payload[nal_offset]
+        if header & 0x1F == 5 or (header >> 1) & 0x3F in {19, 20, 21}:
+            return True
+        offset = nal_offset + 1
+    return False
+
+
 def stream(credentials: P2PCredentials) -> None:
     """Open one P2P session and emit complete HEVC frames."""
     native = NativeTutk()
@@ -299,13 +318,18 @@ def stream(credentials: P2PCredentials) -> None:
         expected = ctypes.c_int()
         info_size = ctypes.c_int()
         frame_number = ctypes.c_uint()
-        first_frame_deadline = time.monotonic() + 35
+        first_frame_deadline = (
+            time.monotonic() + _FIRST_FRAME_TIMEOUT_SECONDS
+        )
         last_frame = time.monotonic()
         last_iframe_request = last_frame
         frames = 0
         synchronized = False
 
         while not _STOP:
+            actual.value = 0
+            expected.value = 0
+            info_size.value = 0
             result = native.av.avRecvFrameData2(
                 av_index,
                 frame_buffer,
@@ -317,10 +341,13 @@ def stream(credentials: P2PCredentials) -> None:
                 ctypes.byref(info_size),
                 ctypes.byref(frame_number),
             )
-            if result > 0 and actual.value > 0:
-                payload = frame_buffer.raw[: min(result, actual.value)]
+            frame_size = actual.value if actual.value > 0 else max(0, result)
+            if result >= 0 and frame_size > 0:
+                payload = frame_buffer.raw[: min(frame_size, len(frame_buffer))]
                 info = frame_info.raw[: info_size.value]
-                is_keyframe = len(info) >= 3 and bool(info[2] & 0x01)
+                is_keyframe = (
+                    len(info) >= 3 and bool(info[2] & 0x01)
+                ) or _annexb_contains_keyframe(payload)
                 if not synchronized and not is_keyframe:
                     now = time.monotonic()
                     if now - last_iframe_request >= 2:
@@ -334,6 +361,12 @@ def stream(credentials: P2PCredentials) -> None:
                     frames += 1
                     last_frame = time.monotonic()
                 continue
+            if result >= 0:
+                result = _DATA_NOT_READY
+            if result == _REMOTE_TIMEOUT:
+                raise P2PWorkerError("frame_receive_timeout")
+            if result == _SESSION_CLOSED_BY_REMOTE:
+                raise P2PWorkerError("frame_receive_closed")
             if result not in _RETRYABLE:
                 raise P2PWorkerError(f"frame_receive_failed:{result}")
             now = time.monotonic()
@@ -344,9 +377,8 @@ def stream(credentials: P2PCredentials) -> None:
                 last_iframe_request = now
             if frames == 0 and now >= first_frame_deadline:
                 raise P2PWorkerError("first_frame_timeout")
-            if frames and now - last_frame > 20:
-                native.send(av_index, 4098, b"\0" * 8)
-                last_frame = now
+            if frames and now - last_frame > _FRAME_STALL_TIMEOUT_SECONDS:
+                raise P2PWorkerError("frame_receive_timeout")
             time.sleep(0.02)
     finally:
         native.close(sid, av_index)

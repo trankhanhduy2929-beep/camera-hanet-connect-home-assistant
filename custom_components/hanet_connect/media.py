@@ -25,7 +25,7 @@ _CREDENTIAL_TTL = 45
 _SNAPSHOT_TTL = 10
 _STREAM_IDLE_SECONDS = 8
 _STREAM_QUEUE_SIZE = 4
-_FIRST_FRAME_TIMEOUT = 22
+_FIRST_FRAME_TIMEOUT = 60
 _STREAM_START_ATTEMPTS = 2
 _MJPEG_BOUNDARY = b"--frame\r\n"
 _VENDOR_ROOT = Path(__file__).with_name("vendor") / "tutk"
@@ -134,8 +134,14 @@ class P2PControlSession:
 class MediaBridge:
     """Convert remote HANET TUTK P2P video into browser-friendly media."""
 
-    def __init__(self, client: HanetApiClient) -> None:
+    def __init__(
+        self,
+        client: HanetApiClient,
+        *,
+        ffmpeg_binary: str = "ffmpeg",
+    ) -> None:
         self.client = client
+        self.ffmpeg_binary = ffmpeg_binary
         self._credentials: dict[str, tuple[float, P2PCloudCredentials]] = {}
         self._snapshot_cache: dict[str, tuple[float, bytes, str]] = {}
         self._pipelines: set[MediaPipeline] = set()
@@ -193,7 +199,7 @@ class MediaBridge:
         if session is not None and not session.closed:
             output["active"] = True
             output["viewers"] = len(session.subscribers)
-        if not shutil.which("ffmpeg"):
+        if not _ffmpeg_available(self.ffmpeg_binary):
             output["code"] = "media_tools_missing"
             return output
         if not _native_runtime_available():
@@ -249,7 +255,10 @@ class MediaBridge:
             except HanetApiError as err:
                 _LOGGER.debug("HANET event image failed for %s: %s", device_id, err)
 
-        if not shutil.which("ffmpeg") or not _native_runtime_available():
+        if (
+            not _ffmpeg_available(self.ffmpeg_binary)
+            or not _native_runtime_available()
+        ):
             return None
         try:
             credentials = await self._p2p_credentials(device_id)
@@ -285,7 +294,7 @@ class MediaBridge:
         self, device: Mapping[str, Any]
     ) -> tuple[MjpegSubscription, bytes]:
         """Subscribe a viewer to the camera's shared remote P2P stream."""
-        if not shutil.which("ffmpeg"):
+        if not _ffmpeg_available(self.ffmpeg_binary):
             raise HanetApiError(
                 _media_message("media_tools_missing"),
                 status=503,
@@ -690,7 +699,7 @@ class MediaBridge:
         )
         try:
             transcoder = await asyncio.create_subprocess_exec(
-                "ffmpeg",
+                self.ffmpeg_binary,
                 "-hide_banner",
                 "-loglevel",
                 "error",
@@ -879,6 +888,18 @@ def _native_runtime_available() -> bool:
     return not _running_on_musl() or _musl_compat_directory() is not None
 
 
+def _ffmpeg_available(binary: str) -> bool:
+    if not binary:
+        return False
+    has_separator = os.sep in binary or (
+        os.altsep is not None and os.altsep in binary
+    )
+    if os.path.isabs(binary) or has_separator:
+        path = Path(binary)
+        return path.is_file() and os.access(path, os.X_OK)
+    return shutil.which(binary) is not None
+
+
 def _worker_environment() -> dict[str, str]:
     """Preload bundled glibc compatibility only in the isolated P2P worker."""
     environment = os.environ.copy()
@@ -965,6 +986,8 @@ def _media_message(code: str) -> str:
         "camera_login_failed": "Camera tu choi phien xem P2P",
         "first_frame_timeout": "Camera P2P khong gui hinh anh",
         "frame_receive_failed": "Phien P2P bi gian doan",
+        "frame_receive_timeout": "Camera P2P da ngung gui hinh anh",
+        "frame_receive_closed": "Camera da dong phien P2P",
         "p2p_stream_unavailable": "Luong P2P HANET tam thoi khong kha dung",
         "p2p_control_unavailable": "Khong the mo kenh dieu khien P2P HANET",
         "p2p_control_rejected": "Camera tu choi lenh dieu khien P2P HANET",
