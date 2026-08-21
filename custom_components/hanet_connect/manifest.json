@@ -8,6 +8,6 @@
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/trankhanhduy2929-beep/camera-hanet-connect-home-assistant/issues",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "requirements": []
 }

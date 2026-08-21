@@ -43,13 +43,13 @@ Custom integration giúp kết nối tài khoản và camera HANET với Home As
 
 4. Chọn loại **Integration**, sau đó bấm **Add**.
 5. Mở repository **HANET Connect** vừa thêm và chọn **Download**.
-6. Kiểm tra HACS đang hiển thị phiên bản `1.0.2` trở lên; các bản cũ chưa có bản
+6. Kiểm tra HACS đang hiển thị phiên bản `1.0.3` trở lên; các bản cũ chưa có bản
    vá luồng P2P mới nhất.
 7. Khởi động lại Home Assistant.
 8. Vào **Settings > Devices & services > Add integration > HANET Connect**.
 
 Phiên bản `v1.0.0` là snapshot cũ còn ô URL máy chủ kích hoạt. Chỉ sử dụng
-`v1.0.2` trở lên.
+`v1.0.3` trở lên.
 
 ## Sửa lỗi HACS không download được
 
@@ -67,7 +67,7 @@ HACS đang giữ snapshot cũ của tag `v1.0.0`. Thực hiện:
 3. Mở **Custom repositories** và xóa URL cũ của repository.
 4. Khởi động lại Home Assistant.
 5. Thêm lại repository bằng nút HACS hoặc URL chính xác ở trên.
-6. Mở repository, xác nhận phiên bản là `1.0.2` trở lên rồi chọn **Download**.
+6. Mở repository, xác nhận phiên bản là `1.0.3` trở lên rồi chọn **Download**.
 
 Nếu vẫn lỗi, mở menu repository trong HACS, chọn **Update information**, sau đó
 thử tải lại. Có thể cài thủ công theo phần tiếp theo để sử dụng ngay.

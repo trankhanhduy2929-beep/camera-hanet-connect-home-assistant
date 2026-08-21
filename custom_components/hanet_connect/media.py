@@ -199,10 +199,13 @@ class MediaBridge:
         if session is not None and not session.closed:
             output["active"] = True
             output["viewers"] = len(session.subscribers)
-        if not _ffmpeg_available(self.ffmpeg_binary):
+        ffmpeg_available, native_available = await _async_runtime_status(
+            self.ffmpeg_binary
+        )
+        if not ffmpeg_available:
             output["code"] = "media_tools_missing"
             return output
-        if not _native_runtime_available():
+        if not native_available:
             return output
         if probe:
             try:
@@ -255,10 +258,10 @@ class MediaBridge:
             except HanetApiError as err:
                 _LOGGER.debug("HANET event image failed for %s: %s", device_id, err)
 
-        if (
-            not _ffmpeg_available(self.ffmpeg_binary)
-            or not _native_runtime_available()
-        ):
+        ffmpeg_available, native_available = await _async_runtime_status(
+            self.ffmpeg_binary
+        )
+        if not ffmpeg_available or not native_available:
             return None
         try:
             credentials = await self._p2p_credentials(device_id)
@@ -294,13 +297,16 @@ class MediaBridge:
         self, device: Mapping[str, Any]
     ) -> tuple[MjpegSubscription, bytes]:
         """Subscribe a viewer to the camera's shared remote P2P stream."""
-        if not _ffmpeg_available(self.ffmpeg_binary):
+        ffmpeg_available, native_available = await _async_runtime_status(
+            self.ffmpeg_binary
+        )
+        if not ffmpeg_available:
             raise HanetApiError(
                 _media_message("media_tools_missing"),
                 status=503,
                 code="media_tools_missing",
             )
-        if not _native_runtime_available():
+        if not native_available:
             raise HanetApiError(
                 _media_message("p2p_runtime_missing"),
                 status=503,
@@ -367,7 +373,7 @@ class MediaBridge:
                 status=400,
                 code="invalid_ptz_command",
             )
-        if not _native_runtime_available():
+        if not await _async_native_runtime_available():
             raise HanetApiError(
                 _media_message("p2p_runtime_missing"),
                 status=503,
@@ -585,6 +591,7 @@ class MediaBridge:
     async def _start_control(
         self, credentials: P2PCloudCredentials, device_id: str
     ) -> P2PControlSession:
+        worker_environment = await _async_worker_environment()
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-u",
@@ -592,7 +599,7 @@ class MediaBridge:
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=_worker_environment(),
+            env=worker_environment,
         )
         assert process.stdin is not None
         assert process.stdout is not None
@@ -657,6 +664,7 @@ class MediaBridge:
         snapshot: bool,
         device_id: str,
     ) -> MediaPipeline:
+        worker_environment = await _async_worker_environment()
         worker = await asyncio.create_subprocess_exec(
             sys.executable,
             "-u",
@@ -664,7 +672,7 @@ class MediaBridge:
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=_worker_environment(),
+            env=worker_environment,
         )
         assert worker.stdin is not None
         worker.stdin.write(credentials.worker_payload())
@@ -868,6 +876,23 @@ async def _process_error_code(process: asyncio.subprocess.Process) -> str:
     if marker not in text:
         return ""
     return text.rsplit(marker, 1)[1].splitlines()[0].split(":", 1)[0]
+
+
+async def _async_runtime_status(binary: str) -> tuple[bool, bool]:
+    """Check filesystem-backed media dependencies outside the event loop."""
+    return await asyncio.to_thread(_runtime_status, binary)
+
+
+async def _async_native_runtime_available() -> bool:
+    return await asyncio.to_thread(_native_runtime_available)
+
+
+async def _async_worker_environment() -> dict[str, str]:
+    return await asyncio.to_thread(_worker_environment)
+
+
+def _runtime_status(binary: str) -> tuple[bool, bool]:
+    return _ffmpeg_available(binary), _native_runtime_available()
 
 
 def _native_runtime_available() -> bool:

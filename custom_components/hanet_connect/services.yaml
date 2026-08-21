@@ -153,14 +153,14 @@ faceid_create:
     person_type:
       name: Loại hồ sơ
       required: false
-      default: 0
+      default: "0"
       selector:
         select:
           options:
             - label: Nhân viên
-              value: 0
+              value: "0"
             - label: Khách
-              value: 1
+              value: "1"
     alias_id:
       name: Mã nhân sự
       required: false
@@ -203,9 +203,9 @@ faceid_update:
         select:
           options:
             - label: Nhân viên
-              value: 0
+              value: "0"
             - label: Khách
-              value: 1
+              value: "1"
     alias_id:
       name: Mã nhân sự
       required: false
@@ -249,14 +249,14 @@ faceid_bulk_create:
     person_type:
       name: Loại hồ sơ
       required: false
-      default: 0
+      default: "0"
       selector:
         select:
           options:
             - label: Nhân viên
-              value: 0
+              value: "0"
             - label: Khách
-              value: 1
+              value: "1"
     department_id:
       name: Mã phòng ban
       required: false
