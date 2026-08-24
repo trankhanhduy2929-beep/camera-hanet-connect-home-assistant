@@ -24,6 +24,7 @@ from .license import (
     HanetLicenseTokenError,
     async_get_installation_identity,
 )
+from .license_config import DEFAULT_LICENSE_SERVER_URL
 from .license_store import HanetLicenseStore, HanetStoredLicense
 
 _LOGGER = logging.getLogger(__name__)
@@ -73,6 +74,13 @@ class HanetLicenseManager:
             raise HanetLicenseUnavailableError(
                 "license_installation_mismatch", identity.activation_code
             )
+        if (
+            record.installation_id != identity.installation_id
+            or record.installation_public_key != identity.public_key
+        ):
+            raise HanetLicenseUnavailableError(
+                "license_installation_mismatch", identity.activation_code
+            )
 
         manager = cls(hass, identity, store, record)
         await manager.async_validate()
@@ -83,7 +91,7 @@ class HanetLicenseManager:
         try:
             client = HanetLicenseClient(
                 self.hass,
-                self.record.server_url,
+                DEFAULT_LICENSE_SERVER_URL,
                 self.identity,
             )
             response = await client.async_refresh(self.record.refresh_token)
@@ -101,8 +109,8 @@ class HanetLicenseManager:
 
         if response.status == LICENSE_STATUS_PENDING:
             refreshed = HanetStoredLicense.from_response(
-                server_url=self.record.server_url,
-                installation_hash=self.identity.installation_hash,
+                server_url=DEFAULT_LICENSE_SERVER_URL,
+                identity=self.identity,
                 previous=self.record,
                 response=response,
             )
@@ -118,8 +126,8 @@ class HanetLicenseManager:
             )
 
         refreshed = HanetStoredLicense.from_response(
-            server_url=self.record.server_url,
-            installation_hash=self.identity.installation_hash,
+            server_url=DEFAULT_LICENSE_SERVER_URL,
+            identity=self.identity,
             previous=self.record,
             response=response,
         )

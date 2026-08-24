@@ -10,6 +10,10 @@ Custom integration giúp kết nối tài khoản và camera HANET với Home As
 - **GitHub:** [camera-hanet-connect-home-assistant](https://github.com/trankhanhduy2929-beep/camera-hanet-connect-home-assistant)
 - **Báo lỗi:** [GitHub Issues](https://github.com/trankhanhduy2929-beep/camera-hanet-connect-home-assistant/issues)
 
+> Addon và custom integration cùng dùng License Center PayOS tại
+> `https://hanet-license-admin-vercel.vercel.app`. Một key có một slot addon và
+> một slot custom component, cùng thời hạn và trạng thái.
+
 ## Yêu cầu
 
 - Home Assistant `2025.1.0` trở lên.
@@ -100,14 +104,30 @@ thử tải lại. Có thể cài thủ công theo phần tiếp theo để sử
 
 ## Kích hoạt và đăng nhập
 
-1. Nhập license key được cung cấp.
-2. Nếu màn hình báo đang chờ duyệt, gửi **mã cài đặt** hiển thị trên màn hình
-   cho đơn vị cấp license. Sau khi được duyệt, bấm gửi lại để tiếp tục.
+1. Mở link License Center hiển thị trong bước cấu hình để đăng nhập, nhận trial
+   hoặc mua gói.
+2. Nhập License Key. Có thể dùng cùng key đang kích hoạt addon HANET; mỗi key có
+   một slot addon và một slot custom component với cùng thời hạn/trạng thái.
 3. Nhập tài khoản và mật khẩu HANET.
 4. Chờ Home Assistant tải địa điểm, camera, FaceID và sự kiện.
 
 Public signing key dùng để kiểm tra chữ ký license đã được nhúng sẵn trong
 integration. Người dùng không cần tải, nhập hoặc chép thêm file sign key.
+
+### License Center cho addon và custom component
+
+Người dùng add-on mở **Cài đặt > License addon** trong giao diện gateway hoặc vào
+License Center:
+
+```text
+https://hanet-license-admin-vercel.vercel.app
+```
+
+Portal hỗ trợ trial 1 ngày, gói 1 tháng `50.000đ`, gói vĩnh viễn `200.000đ`,
+PayOS VietQR, dashboard lịch sử và admin. Cùng một key dùng được cho một addon
+và một custom component. Add-on `0.9.6` mặc định để
+`license_required: false`, nên có thể rollout portal trước mà không khóa các
+chức năng đang chạy. Chỉ bật enforcement sau khi đã test webhook và verify.
 
 ## Sử dụng
 
@@ -178,8 +198,8 @@ Home Assistant giữ lại.
 
 - Kiểm tra Home Assistant có Internet và ngày giờ hệ thống chính xác.
 - Kiểm tra license key được nhập đầy đủ.
-- Nếu license đang chờ duyệt, bị khóa, hết hạn hoặc đã đủ số máy, liên hệ đơn vị
-  cấp license và gửi mã cài đặt đang hiển thị.
+- Nếu license bị khóa, hết hạn hoặc slot custom đã gắn máy khác, mở dashboard
+  License Center hoặc liên hệ admin để reset binding.
 
 ### Không đăng nhập được HANET
 

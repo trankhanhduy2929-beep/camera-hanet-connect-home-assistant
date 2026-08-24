@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Activate HANET Connect",
-        "description": "Installation code: {activation_code}. Enter only the license key you received. Easy Mode binds the first Home Assistant that uses the key. Only a hash derived from the Home Assistant instance ID is sent; HANET account credentials are never sent to the activation server.",
+        "description": "Open {portal_link} to sign in, claim a trial or buy a plan. Enter the same License Key used by the HANET addon. One key includes one addon slot and one custom-component slot. Installation code: {activation_code}.",
         "data": {
           "license_key": "License key"
         }
@@ -324,7 +324,7 @@
     "step": {
       "license": {
         "title": "License and activation",
-        "description": "Installation code: {activation_code}. Current status: {license_status}. Leave the license key blank to refresh the existing activation, or enter a new key to replace it.",
+        "description": "Open {portal_link} to manage this installation. Current status: {license_status}. Leave the key blank to refresh, or enter the same key used by the HANET addon. Installation code: {activation_code}.",
         "data": {
           "license_key": "New license key (optional)"
         }

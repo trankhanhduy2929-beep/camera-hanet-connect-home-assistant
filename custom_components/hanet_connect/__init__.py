@@ -489,7 +489,8 @@ def _show_license_notification(
         hass,
         (
             "HANET Connect chưa có giấy phép hợp lệ. Mở Cài đặt > Thiết bị & "
-            "dịch vụ > HANET Connect > Cấu hình để nhập server và license key. "
+            "dịch vụ > HANET Connect > Cấu hình để nhập License Key từ "
+            "https://hanet-license-admin-vercel.vercel.app. "
             f"Mã cài đặt: {err.activation_code}. Trạng thái: {err.code}."
         ),
         title="Kích hoạt HANET Connect",

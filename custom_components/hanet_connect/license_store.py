@@ -1,4 +1,4 @@
-"""Persistent storage for HANET activation leases."""
+"""Persistent storage for HANET portal activation responses."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
-from .license import HanetLicenseResponse
+from .license import HanetInstallationIdentity, HanetLicenseResponse
 
 _STORAGE_KEY = f"{DOMAIN}.license"
 _STORAGE_VERSION = 1
@@ -23,19 +23,24 @@ class HanetStoredLicense:
 
     server_url: str
     installation_hash: str
+    installation_id: str
+    installation_public_key: str
     activation_code: str
     refresh_token: str
     status: str
     lease_token: str | None
+    verification: dict[str, Any] | None
     license_id: str | None
     updated_at: int
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> HanetStoredLicense | None:
-        """Parse stored data, returning None for incomplete records."""
+        """Parse a portal record, ignoring incompatible Worker-era records."""
         required = (
             "server_url",
             "installation_hash",
+            "installation_id",
+            "installation_public_key",
             "activation_code",
             "refresh_token",
             "status",
@@ -43,9 +48,12 @@ class HanetStoredLicense:
         if any(not isinstance(data.get(key), str) or not data[key] for key in required):
             return None
         lease_token = data.get("lease_token")
+        verification = data.get("verification")
         license_id = data.get("license_id")
         updated_at = data.get("updated_at", 0)
         if lease_token is not None and not isinstance(lease_token, str):
+            return None
+        if verification is not None and not isinstance(verification, dict):
             return None
         if license_id is not None and not isinstance(license_id, str):
             return None
@@ -54,10 +62,13 @@ class HanetStoredLicense:
         return cls(
             server_url=data["server_url"],
             installation_hash=data["installation_hash"],
+            installation_id=data["installation_id"],
+            installation_public_key=data["installation_public_key"],
             activation_code=data["activation_code"],
             refresh_token=data["refresh_token"],
             status=data["status"],
             lease_token=lease_token,
+            verification=verification,
             license_id=license_id,
             updated_at=updated_at,
         )
@@ -67,19 +78,20 @@ class HanetStoredLicense:
         cls,
         *,
         server_url: str,
-        installation_hash: str,
+        identity: HanetInstallationIdentity,
         previous: HanetStoredLicense | None,
         response: HanetLicenseResponse,
     ) -> HanetStoredLicense:
-        """Create a persistent record from an activation response."""
+        """Create a persistent record from a verified portal response."""
         refresh_token = response.refresh_token or (
             previous.refresh_token if previous else None
         )
         if not refresh_token:
-            raise ValueError("missing_refresh_token")
-        lease_token = response.lease_token
-        if lease_token is None and previous is not None:
-            lease_token = previous.lease_token
+            raise ValueError("missing_license_key")
+        lease_token = response.lease_token or (
+            previous.lease_token if previous else None
+        )
+        verification = response.verification or (previous.verification if previous else None)
         license_id = (
             response.entitlement.license_id
             if response.entitlement
@@ -89,18 +101,21 @@ class HanetStoredLicense:
         )
         return cls(
             server_url=server_url,
-            installation_hash=installation_hash,
+            installation_hash=identity.installation_hash,
+            installation_id=identity.installation_id,
+            installation_public_key=identity.public_key,
             activation_code=response.activation_code,
             refresh_token=refresh_token,
             status=response.status,
             lease_token=lease_token,
+            verification=verification,
             license_id=license_id,
             updated_at=int(time()),
         )
 
 
 class HanetLicenseStore:
-    """Read and write the one installation license for this HA instance."""
+    """Read and write the one custom-component license for this HA instance."""
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._store = Store[dict[str, Any]](
@@ -112,7 +127,7 @@ class HanetLicenseStore:
         self._lock = asyncio.Lock()
 
     async def async_load(self) -> HanetStoredLicense | None:
-        """Load the current activation record."""
+        """Load the current activation cache."""
         async with self._lock:
             data = await self._store.async_load()
         if not isinstance(data, dict):

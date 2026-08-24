@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Kích hoạt HANET Connect",
-        "description": "Mã cài đặt: {activation_code}. Chỉ cần nhập license key được cung cấp. Easy Mode tự gắn key với Home Assistant đầu tiên sử dụng. Server chỉ nhận hash tạo từ instance ID; tài khoản và mật khẩu HANET không bao giờ được gửi tới server kích hoạt.",
+        "description": "Mở {portal_link} để đăng nhập, nhận trial hoặc mua gói. Nhập cùng License Key đang dùng cho addon HANET. Mỗi key có một slot addon và một slot custom component. Mã cài đặt: {activation_code}.",
         "data": {
           "license_key": "License key"
         }
@@ -324,7 +324,7 @@
     "step": {
       "license": {
         "title": "License và kích hoạt",
-        "description": "Mã cài đặt: {activation_code}. Trạng thái hiện tại: {license_status}. Để trống license key để làm mới kích hoạt hiện tại, hoặc nhập key mới để thay thế.",
+        "description": "Mở {portal_link} để quản lý cài đặt. Trạng thái hiện tại: {license_status}. Để trống key để làm mới hoặc nhập cùng key đang dùng cho addon HANET. Mã cài đặt: {activation_code}.",
         "data": {
           "license_key": "License key mới (không bắt buộc)"
         }

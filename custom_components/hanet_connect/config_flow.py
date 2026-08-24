@@ -42,6 +42,7 @@ from .license import (
     HanetLicenseResponseError,
     HanetLicenseTokenError,
     async_get_installation_identity,
+    license_portal_link,
     normalize_license_server_url,
 )
 from .license_config import DEFAULT_LICENSE_SERVER_URL
@@ -58,6 +59,11 @@ _LICENSE_ERROR_MAP = {
     "license_expired": "license_expired",
     "license_inactive": "license_inactive",
     "license_request_rejected": "license_rejected",
+    "license_blocked": "license_inactive",
+    "license_activation_unavailable": "license_rejected",
+    "installation_already_claimed": "license_activation_limit",
+    "installation_client_type_mismatch": "license_activation_limit",
+    "installation_key_mismatch": "license_activation_limit",
 }
 
 
@@ -71,7 +77,7 @@ async def _async_store_license_response(
 ) -> HanetStoredLicense:
     record = HanetStoredLicense.from_response(
         server_url=server_url,
-        installation_hash=identity.installation_hash,
+        identity=identity,
         previous=previous,
         response=response,
     )
@@ -84,8 +90,7 @@ def _license_error_key(code: str) -> str:
 
 
 def _resolve_server_url(record: HanetStoredLicense | None) -> str:
-    candidate = str((record.server_url if record else "") or DEFAULT_LICENSE_SERVER_URL)
-    return normalize_license_server_url(candidate)
+    return normalize_license_server_url(DEFAULT_LICENSE_SERVER_URL)
 
 
 async def _async_cached_license_state(
@@ -97,12 +102,17 @@ async def _async_cached_license_state(
         return "not_configured"
     if record.installation_hash != identity.installation_hash:
         return "installation_mismatch"
+    if (
+        record.installation_id != identity.installation_id
+        or record.installation_public_key != identity.public_key
+    ):
+        return "installation_mismatch"
     if record.status == LICENSE_STATUS_PENDING:
         return LICENSE_STATUS_PENDING
     if not record.lease_token:
         return record.status
     try:
-        client = HanetLicenseClient(hass, record.server_url, identity)
+        client = HanetLicenseClient(hass, DEFAULT_LICENSE_SERVER_URL, identity)
         return client.verify_lease(record.lease_token).state_at()
     except (HanetLicenseTokenError, ValueError):
         return "invalid_lease"
@@ -177,7 +187,10 @@ class HanetConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema(schema),
             errors=errors,
-            description_placeholders={"activation_code": identity.activation_code},
+            description_placeholders={
+                "activation_code": identity.activation_code,
+                "portal_link": license_portal_link(DEFAULT_LICENSE_SERVER_URL, identity),
+            },
         )
 
     async def async_step_activation_pending(
@@ -195,11 +208,11 @@ class HanetConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 response = await HanetLicenseClient(
-                    self.hass, record.server_url, identity
+                    self.hass, DEFAULT_LICENSE_SERVER_URL, identity
                 ).async_refresh(record.refresh_token)
                 record = await _async_store_license_response(
                     self.hass,
-                    server_url=record.server_url,
+                    server_url=DEFAULT_LICENSE_SERVER_URL,
                     identity=identity,
                     previous=record,
                     response=response,
@@ -411,6 +424,7 @@ class HanetConnectOptionsFlow(config_entries.OptionsFlow):
             description_placeholders={
                 "activation_code": identity.activation_code,
                 "license_status": status,
+                "portal_link": license_portal_link(DEFAULT_LICENSE_SERVER_URL, identity),
             },
         )
 
@@ -429,11 +443,11 @@ class HanetConnectOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             try:
                 response = await HanetLicenseClient(
-                    self.hass, record.server_url, identity
+                    self.hass, DEFAULT_LICENSE_SERVER_URL, identity
                 ).async_refresh(record.refresh_token)
                 record = await _async_store_license_response(
                     self.hass,
-                    server_url=record.server_url,
+                    server_url=DEFAULT_LICENSE_SERVER_URL,
                     identity=identity,
                     previous=record,
                     response=response,
