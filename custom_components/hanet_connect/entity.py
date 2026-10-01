@@ -247,12 +247,17 @@ _SETTING_WORDS = {
 }
 _SENSITIVE_SETTING_KEYS = {
     "accesstoken",
+    "apikey",
     "authkey",
     "licensekey",
-    "password",
+    "mqttpwd",
     "p2ppassword",
+    "p2ppwd",
+    "password",
     "refreshtoken",
+    "rtsppwd",
     "secret",
+    "streampwd",
     "token",
 }
 _READ_ONLY_SETTING_WORDS = {

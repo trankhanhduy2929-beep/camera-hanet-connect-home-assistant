@@ -10,14 +10,31 @@ from homeassistant.core import HomeAssistant
 from . import HanetConfigEntry
 
 TO_REDACT = {
-    "api_key",
+    "accessToken",
     "access_token",
-    "refresh_token",
-    "stream_url",
-    "snapshot_url",
-    "peer_id",
+    "apiKey",
+    "api_key",
+    "authKey",
+    "auth_key",
+    "licenseKey",
+    "license_key",
+    "mqttPwd",
+    "mqtt_pwd",
+    "p2pPassword",
     "p2p_id",
+    "p2p_password",
+    "p2p_pwd",
     "password",
+    "peer_id",
+    "refreshToken",
+    "refresh_token",
+    "rtspPwd",
+    "rtsp_pwd",
+    "secret",
+    "snapshot_url",
+    "streamPwd",
+    "stream_url",
+    "token",
 }
 
 

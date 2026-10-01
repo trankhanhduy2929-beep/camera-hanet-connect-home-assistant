@@ -116,8 +116,9 @@ integration. Người dùng không cần tải, nhập hoặc chép thêm file s
 
 ### License Center cho addon và custom component
 
-Người dùng add-on mở **Cài đặt > License addon** trong giao diện gateway hoặc vào
-License Center:
+Người dùng add-on `0.10.5` chỉ cần mở **HANET Connect**. Nếu chưa active, add-on
+tự đưa tới đúng trang activation đã gắn installation ID/public key; không cần nhập
+URL License Center trong Configuration:
 
 ```text
 https://hanet-license-admin-vercel.vercel.app
@@ -125,9 +126,8 @@ https://hanet-license-admin-vercel.vercel.app
 
 Portal hỗ trợ trial 1 ngày, gói 1 tháng `50.000đ`, gói vĩnh viễn `200.000đ`,
 PayOS VietQR, dashboard lịch sử và admin. Cùng một key dùng được cho một addon
-và một custom component. Add-on `0.9.6` mặc định để
-`license_required: false`, nên có thể rollout portal trước mà không khóa các
-chức năng đang chạy. Chỉ bật enforcement sau khi đã test webhook và verify.
+và một custom component. Add-on `0.10.5` luôn yêu cầu license trước dashboard/API
+nghiệp vụ; portal URL, enforcement và cache offline được nhúng cố định.
 
 ## Sử dụng
 

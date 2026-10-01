@@ -80,6 +80,7 @@ class HanetApiClient:
         self.verify_tls = verify_tls
         self._session = session
         self._owns_session = session is None
+        self._web_session: aiohttp.ClientSession | None = None
         self._token_callback = token_callback
         self._tokens: dict[str, Any] = dict(tokens or {})
         self._auth_lock = asyncio.Lock()
@@ -106,8 +107,23 @@ class HanetApiClient:
             self._owns_session = True
         return self._session
 
+    async def _get_web_session(self) -> aiohttp.ClientSession:
+        if self._web_session is None or self._web_session.closed:
+            session = await self._get_session()
+            self._web_session = aiohttp.ClientSession(
+                connector=session.connector,
+                connector_owner=False,
+                timeout=session.timeout,
+                trust_env=session.trust_env,
+            )
+            self._web_authenticated = False
+        return self._web_session
+
     async def close(self) -> None:
         """Close the owned HTTP session."""
+        if self._web_session is not None and not self._web_session.closed:
+            await self._web_session.close()
+        self._web_authenticated = False
         if self._session is not None and self._owns_session and not self._session.closed:
             await self._session.close()
 
@@ -168,22 +184,26 @@ class HanetApiClient:
 
     async def _web_login(self) -> None:
         """Create the Auth.js session used by connect.hanet.ai inventory pages."""
-        if self._web_authenticated:
-            return
         if not self.username or not self.password:
             raise HanetAuthError(
                 "HANET username and password are required for web discovery",
                 status=401,
             )
+        session = await self._get_web_session()
+        if self._web_authenticated:
+            return
         async with self._auth_lock:
             if self._web_authenticated:
                 return
-            session = await self._get_session()
             try:
                 async with session.get(
                     urljoin(self.web_base_url, "api/auth/csrf"),
                     ssl=self.verify_tls,
                 ) as response:
+                    if response.status >= 400:
+                        raise _api_error(
+                            response.status, await _decode_response(response), auth_endpoint=True
+                        )
                     csrf_data = await response.json(content_type=None)
                 csrf = (
                     csrf_data.get("csrfToken")
@@ -219,6 +239,10 @@ class HanetApiClient:
                     urljoin(self.web_base_url, "api/auth/session"),
                     ssl=self.verify_tls,
                 ) as response:
+                    if response.status >= 400:
+                        raise _api_error(
+                            response.status, await _decode_response(response), auth_endpoint=True
+                        )
                     web_session = await response.json(content_type=None)
                 if not (
                     isinstance(web_session, Mapping)
@@ -240,7 +264,7 @@ class HanetApiClient:
         if not path.startswith("/") or path.startswith("//"):
             raise HanetConfigurationError("HANET web paths must be relative")
         await self._web_login()
-        session = await self._get_session()
+        session = await self._get_web_session()
         try:
             async with session.get(
                 urljoin(self.web_base_url, path.lstrip("/")),
@@ -251,7 +275,7 @@ class HanetApiClient:
                 allow_redirects=True,
                 ssl=self.verify_tls,
             ) as response:
-                if response.status in {401, 403} or "/login" in str(
+                if response.status == 401 or "/login" in str(
                     response.url
                 ).casefold():
                     if retry:
@@ -415,7 +439,9 @@ class HanetApiClient:
                         retry_auth=False,
                     )
                 if response.status >= 400:
-                    raise _api_error(response.status, result)
+                    raise _api_error(
+                        response.status, result, auth_endpoint=path.startswith("/auth/")
+                    )
                 return result
         except TimeoutError as err:
             raise HanetApiError("HANET API request timed out") from err
@@ -690,7 +716,7 @@ async def _decode_response(response: aiohttp.ClientResponse) -> Any:
         return text
 
 
-def _api_error(status: int, payload: Any) -> HanetApiError:
+def _api_error(status: int, payload: Any, *, auth_endpoint: bool = False) -> HanetApiError:
     message = f"HANET API returned HTTP {status}"
     code: int | str | None = None
     field: str | None = None
@@ -701,7 +727,9 @@ def _api_error(status: int, payload: Any) -> HanetApiError:
         field = str(raw_field) if raw_field is not None else None
     elif isinstance(payload, str) and payload.strip():
         message = payload.strip()[:500]
-    error_type = HanetAuthError if status in {401, 403} else HanetApiError
+    error_type = (
+        HanetAuthError if status == 401 or (status == 403 and auth_endpoint) else HanetApiError
+    )
     return error_type(message, status=status, code=code, field=field, payload=payload)
 
 

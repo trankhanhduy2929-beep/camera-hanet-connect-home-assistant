@@ -36,11 +36,18 @@ _SETTINGS_TTL = 300
 _MAX_MEDIA_BYTES = 24 * 1024 * 1024
 _SENSITIVE_KEYS = {
     "access_token",
-    "refreshtoken",
-    "refresh_token",
-    "password",
-    "p2p_password",
+    "apikey",
+    "authkey",
     "license_key",
+    "mqtt_pwd",
+    "p2p_password",
+    "p2p_pwd",
+    "password",
+    "refresh_token",
+    "refreshtoken",
+    "rtsp_pwd",
+    "secret",
+    "streampwd",
 }
 
 
@@ -325,6 +332,8 @@ class HanetGatewayClient:
                 for place in places
             )
         )
+        if places and all(not response for response in responses):
+            return [dict(event) for event in self._events]
         events: list[dict[str, Any]] = []
         seen: set[str] = set()
         for response in responses:
@@ -552,6 +561,8 @@ class HanetGatewayClient:
         actual_path = _matching_path(current_settings, setting)
         current = _path_value(current_settings, actual_path)
         rendered = _preserve_type(value, current)
+        if isinstance(current, Mapping) and not isinstance(rendered, Mapping):
+            rendered = _merge_bool_object(current, rendered)
         payload = _setting_patch(current_settings, actual_path, rendered)
         if _canonical_key(actual_path[0]).startswith("notification"):
             result = await self.async_call_endpoint(
@@ -832,7 +843,22 @@ def _safe_value(value: Any) -> Any:
         return _safe_mapping(value)
     if isinstance(value, list):
         return [_safe_value(item) for item in value]
+    if isinstance(value, str):
+        return _redact_embedded_json(value)
     return value
+
+
+def _redact_embedded_json(value: str) -> str:
+    stripped = value.strip()
+    if not stripped or stripped[0] not in "{[":
+        return value
+    try:
+        parsed = json.loads(stripped)
+    except (TypeError, ValueError):
+        return value
+    if not isinstance(parsed, (Mapping, list)):
+        return value
+    return json.dumps(_safe_value(parsed), separators=(",", ":"))
 
 
 def _without_raw(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -909,6 +935,25 @@ def _preserve_type(value: Any, current: Any) -> Any:
         with contextlib.suppress(TypeError, ValueError):
             return float(value)
     return value
+
+
+_BOOL_OBJECT_KEYS = {"enable", "enabled", "active"}
+
+
+def _merge_bool_object(current: Mapping[str, Any], value: Any) -> Any:
+    key = next(
+        (
+            str(candidate)
+            for candidate in current
+            if _canonical_key(str(candidate)) in _BOOL_OBJECT_KEYS
+        ),
+        None,
+    )
+    if key is None:
+        return value
+    merged = dict(current)
+    merged[key] = value
+    return merged
 
 
 def _setting_values_equal(observed: Any, expected: Any) -> bool:

@@ -160,6 +160,8 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._known_events is None:
             self._known_events = event_keys
             return
+        if not event_keys:
+            return
         for item in reversed(rows):
             if _event_key(item) not in self._known_events:
                 self.hass.bus.async_fire(

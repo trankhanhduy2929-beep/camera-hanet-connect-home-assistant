@@ -28,6 +28,7 @@ from homeassistant.exceptions import (
 )
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.service import async_register_admin_service
 
 from .api import HanetGatewayClient, HanetGatewayError
 from .const import (
@@ -312,21 +313,24 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             "results": results,
         }
 
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_CALL_ENDPOINT,
         call_endpoint,
         schema=CALL_ENDPOINT_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_SEND_COMMAND,
         send_command,
         schema=SEND_COMMAND_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_SET_SETTING,
         set_setting,
@@ -347,28 +351,32 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         schema=HISTORY_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_FACEID_CREATE,
         faceid_create,
         schema=FACEID_CREATE_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_FACEID_UPDATE,
         faceid_update,
         schema=FACEID_UPDATE_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_FACEID_DELETE,
         faceid_delete,
         schema=FACEID_DELETE_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         SERVICE_FACEID_BULK_CREATE,
         faceid_bulk_create,

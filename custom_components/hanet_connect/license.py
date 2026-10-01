@@ -18,7 +18,7 @@ from typing import Any
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import aiohttp
-from cryptography.exceptions import InvalidSignature
+from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
@@ -313,7 +313,7 @@ def decrypt_license_key(
             identity.installation_id.encode("utf-8"),
         )
         return value.decode("utf-8")
-    except (ValueError, UnicodeDecodeError, binascii.Error):
+    except (InvalidTag, ValueError, UnicodeDecodeError, binascii.Error):
         return ""
 
 

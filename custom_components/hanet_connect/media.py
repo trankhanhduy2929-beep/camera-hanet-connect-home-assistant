@@ -11,7 +11,7 @@ import platform
 import shutil
 import sys
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Coroutine, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -26,6 +26,7 @@ _SNAPSHOT_TTL = 10
 _STREAM_IDLE_SECONDS = 8
 _STREAM_QUEUE_SIZE = 4
 _FIRST_FRAME_TIMEOUT = 60
+_FRAME_STALL_TIMEOUT = 20
 _STREAM_START_ATTEMPTS = 2
 _MJPEG_BOUNDARY = b"--frame\r\n"
 _VENDOR_ROOT = Path(__file__).with_name("vendor") / "tutk"
@@ -83,6 +84,9 @@ class MediaPipeline:
     transcoder: asyncio.subprocess.Process
     relay_task: asyncio.Task[None]
     device_id: str
+    stderr: bytearray = field(default_factory=bytearray, repr=False)
+    stderr_tasks: tuple[asyncio.Task[None], ...] = ()
+    cleanup_task: asyncio.Task[None] | None = None
 
     @property
     def stdout(self) -> asyncio.StreamReader | None:
@@ -117,8 +121,10 @@ class SharedMjpegSession:
     frame_event: asyncio.Event = field(default_factory=asyncio.Event)
     broadcaster: asyncio.Task[None] | None = None
     idle_task: asyncio.Task[None] | None = None
+    cleanup_task: asyncio.Task[None] | None = None
     latest_part: bytes = b""
     latest_jpeg: bytes = b""
+    latest_frame_at: float = 0
     error_code: str = ""
     closed: bool = False
 
@@ -129,6 +135,9 @@ class P2PControlSession:
 
     process: asyncio.subprocess.Process
     idle_task: asyncio.Task[None] | None = None
+    stderr: bytearray = field(default_factory=bytearray, repr=False)
+    stderr_task: asyncio.Task[None] | None = None
+    cleanup_task: asyncio.Task[None] | None = None
 
 
 class MediaBridge:
@@ -149,9 +158,22 @@ class MediaBridge:
         self._streams: dict[str, SharedMjpegSession] = {}
         self._controls: dict[str, P2PControlSession] = {}
         self._control_locks: dict[str, asyncio.Lock] = {}
+        self._cleanup_tasks: set[asyncio.Task[None]] = set()
+        self._close_task: asyncio.Task[None] | None = None
+
+    def _own_cleanup(self, coroutine: Coroutine[Any, Any, None]) -> asyncio.Task[None]:
+        task = asyncio.create_task(coroutine)
+        self._cleanup_tasks.add(task)
+        task.add_done_callback(self._cleanup_tasks.discard)
+        return task
 
     async def close(self) -> None:
         """Terminate native sessions and forget all ephemeral credentials."""
+        if self._close_task is None:
+            self._close_task = asyncio.create_task(self._close())
+        await asyncio.shield(self._close_task)
+
+    async def _close(self) -> None:
         sessions = tuple(self._streams.values())
         await asyncio.gather(
             *(self._shutdown_stream(session) for session in sessions),
@@ -170,6 +192,10 @@ class MediaBridge:
             ),
             return_exceptions=True,
         )
+        while self._cleanup_tasks:
+            tasks = tuple(self._cleanup_tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
+            self._cleanup_tasks.difference_update(tasks)
         self._credentials.clear()
         self._snapshot_cache.clear()
         self._device_locks.clear()
@@ -231,7 +257,11 @@ class MediaBridge:
             if not session.latest_jpeg:
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(session.frame_event.wait(), timeout=5)
-            if session.latest_jpeg:
+            if (
+                not session.closed
+                and session.latest_jpeg
+                and time.monotonic() - session.latest_frame_at < _SNAPSHOT_TTL
+            ):
                 return session.latest_jpeg, "image/jpeg"
 
         urls: list[str] = []
@@ -270,7 +300,10 @@ class MediaBridge:
         async with self._device_lock(device_id):
             session = self._streams.get(device_id)
             if session is not None and not session.closed:
-                if session.latest_jpeg:
+                if (
+                    session.latest_jpeg
+                    and time.monotonic() - session.latest_frame_at < _SNAPSHOT_TTL
+                ):
                     return session.latest_jpeg, "image/jpeg"
                 return None
             pipeline = await self._start_pipeline(
@@ -324,8 +357,16 @@ class MediaBridge:
                 last_code = "first_frame_timeout"
                 session.error_code = last_code
                 await self._shutdown_stream(session)
+            except asyncio.CancelledError:
+                if not session.subscribers:
+                    await self._shutdown_stream(session)
+                raise
             else:
-                if not session.closed and session.latest_part:
+                if (
+                    not session.closed
+                    and session.latest_part
+                    and time.monotonic() - session.latest_frame_at < _FRAME_STALL_TIMEOUT
+                ):
                     if session.idle_task is not None:
                         session.idle_task.cancel()
                         session.idle_task = None
@@ -434,30 +475,35 @@ class MediaBridge:
 
     async def stop_process(self, pipeline: MediaPipeline) -> None:
         """Stop FFmpeg and its isolated native P2P worker."""
-        self._pipelines.discard(pipeline)
-        worker_input = pipeline.worker.stdin
-        if (
-            pipeline.worker.returncode is None
-            and worker_input is not None
-            and not worker_input.is_closing()
-        ):
-            with contextlib.suppress(BrokenPipeError, ConnectionResetError):
-                worker_input.write(b"stop\n")
-                await worker_input.drain()
-            worker_input.close()
+        if pipeline.cleanup_task is None:
+            pipeline.cleanup_task = self._own_cleanup(self._stop_pipeline(pipeline))
+        await asyncio.shield(pipeline.cleanup_task)
 
-        await _wait_or_stop(pipeline.worker, timeout=4)
+    async def _stop_pipeline(self, pipeline: MediaPipeline) -> None:
         try:
-            await asyncio.wait_for(asyncio.shield(pipeline.relay_task), timeout=1)
-        except TimeoutError:
             pipeline.relay_task.cancel()
-            await asyncio.gather(pipeline.relay_task, return_exceptions=True)
-        await _wait_or_stop(pipeline.transcoder, timeout=2)
+            await _finish_tasks((pipeline.relay_task,))
+            await asyncio.gather(
+                _cleanup_process(pipeline.worker, timeout=4),
+                _cleanup_process(pipeline.transcoder, timeout=2),
+            )
+        finally:
+            await _finish_tasks(pipeline.stderr_tasks)
+            pipeline.stderr.clear()
+            self._pipelines.discard(pipeline)
 
     async def _shared_stream(self, device_id: str) -> SharedMjpegSession:
         lock = self._device_lock(device_id)
         async with lock:
             current = self._streams.get(device_id)
+            if (
+                current is not None
+                and not current.closed
+                and current.latest_part
+                and time.monotonic() - current.latest_frame_at >= _FRAME_STALL_TIMEOUT
+            ):
+                current.error_code = "frame_receive_timeout"
+                await self._shutdown_stream(current)
             if (
                 current is not None
                 and not current.closed
@@ -484,15 +530,28 @@ class MediaBridge:
 
     async def _broadcast_stream(self, session: SharedMjpegSession) -> None:
         buffer = bytearray()
+        deadline = time.monotonic() + _FIRST_FRAME_TIMEOUT
         try:
             source = session.pipeline.stdout
             assert source is not None
-            while chunk := await source.read(64 * 1024):
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError
+                chunk = await asyncio.wait_for(source.read(64 * 1024), timeout=remaining)
+                if not chunk:
+                    break
                 buffer.extend(chunk)
                 while part := _take_mjpeg_part(buffer):
                     self._publish_mjpeg_part(session, part)
+                if session.latest_part:
+                    deadline = session.latest_frame_at + _FRAME_STALL_TIMEOUT
             if not session.latest_part:
                 session.error_code = await _pipeline_error_code(session.pipeline)
+        except TimeoutError:
+            session.error_code = (
+                "frame_receive_timeout" if session.latest_part else "first_frame_timeout"
+            )
         except asyncio.CancelledError:
             raise
         except Exception as err:
@@ -503,31 +562,20 @@ class MediaBridge:
                 type(err).__name__,
             )
         finally:
-            session.frame_event.set()
-            await self.stop_process(session.pipeline)
-            self._credentials.pop(session.device_id, None)
-            session.closed = True
-            if self._streams.get(session.device_id) is session:
-                self._streams.pop(session.device_id, None)
-            if session.idle_task is not None:
-                current = asyncio.current_task()
-                if session.idle_task is not current:
-                    session.idle_task.cancel()
-            for subscription in tuple(session.subscribers):
-                _queue_latest(subscription.queue, None)
-            _LOGGER.info(
-                "Stopped shared HANET P2P stream for %s", session.device_id
-            )
+            await self._shutdown_stream(session)
 
     def _publish_mjpeg_part(
         self, session: SharedMjpegSession, part: bytes
     ) -> None:
+        if session.closed:
+            return
         session.latest_part = part
         jpeg = _jpeg_from_mjpeg_part(part)
         if jpeg:
             session.latest_jpeg = jpeg
+            session.latest_frame_at = time.monotonic()
             self._snapshot_cache[session.device_id] = (
-                time.monotonic(),
+                session.latest_frame_at,
                 jpeg,
                 "image/jpeg",
             )
@@ -546,21 +594,30 @@ class MediaBridge:
             raise
 
     async def _shutdown_stream(self, session: SharedMjpegSession) -> None:
-        task = session.broadcaster
-        if task is None:
-            await self.stop_process(session.pipeline)
+        if session.cleanup_task is None:
             session.closed = True
             session.frame_event.set()
             if self._streams.get(session.device_id) is session:
                 self._streams.pop(session.device_id, None)
+                self._credentials.pop(session.device_id, None)
+                self._snapshot_cache.pop(session.device_id, None)
+            current = asyncio.current_task()
+            for task in (session.idle_task, session.broadcaster):
+                if task is not None and task is not current and not task.done():
+                    task.cancel()
             for subscription in tuple(session.subscribers):
+                while not subscription.queue.empty():
+                    subscription.queue.get_nowait()
                 _queue_latest(subscription.queue, None)
-            return
-        if task is asyncio.current_task():
-            return
-        if not task.done():
-            task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
+            session.cleanup_task = self._own_cleanup(self._cleanup_stream(session))
+        if asyncio.current_task() is not session.broadcaster:
+            await asyncio.shield(session.cleanup_task)
+
+    async def _cleanup_stream(self, session: SharedMjpegSession) -> None:
+        if session.broadcaster is not None:
+            await asyncio.gather(session.broadcaster, return_exceptions=True)
+        await self.stop_process(session.pipeline)
+        _LOGGER.info("Stopped shared HANET P2P stream for %s", session.device_id)
 
     async def _p2p_credentials(self, device_id: str) -> P2PCloudCredentials:
         if not device_id:
@@ -601,31 +658,33 @@ class MediaBridge:
             stderr=asyncio.subprocess.PIPE,
             env=worker_environment,
         )
-        assert process.stdin is not None
-        assert process.stdout is not None
-        process.stdin.write(credentials.worker_payload(mode="control"))
-        await process.stdin.drain()
+        session = P2PControlSession(process=process)
+        session.stderr_task = asyncio.create_task(_drain_stream(process.stderr, session.stderr))
         try:
-            ready = await asyncio.wait_for(
-                process.stdout.readline(), timeout=25
-            )
+            assert process.stdin is not None
+            assert process.stdout is not None
+            process.stdin.write(credentials.worker_payload(mode="control"))
+            await asyncio.wait_for(process.stdin.drain(), timeout=5)
+            ready = await asyncio.wait_for(process.stdout.readline(), timeout=25)
+            if ready.strip() != b"READY":
+                detail = await _process_error_code(session.stderr_task, session.stderr)
+                raise HanetApiError(
+                    _media_message(detail or "p2p_control_unavailable"),
+                    status=503,
+                    code=detail or "p2p_control_unavailable",
+                )
         except TimeoutError as err:
-            await _wait_or_stop(process, timeout=0)
+            await self._stop_control(device_id, session)
             raise HanetApiError(
                 _media_message("p2p_control_unavailable"),
                 status=504,
                 code="p2p_control_unavailable",
             ) from err
-        if ready.strip() != b"READY":
-            detail = await _process_error_code(process)
-            await _wait_or_stop(process, timeout=0)
-            raise HanetApiError(
-                _media_message(detail or "p2p_control_unavailable"),
-                status=503,
-                code=detail or "p2p_control_unavailable",
-            )
+        except BaseException:
+            await self._stop_control(device_id, session)
+            raise
         _LOGGER.info("HANET P2P PTZ channel ready for %s", device_id)
-        return P2PControlSession(process=process)
+        return session
 
     async def _stop_idle_control(
         self, device_id: str, session: P2PControlSession
@@ -647,15 +706,19 @@ class MediaBridge:
     async def _stop_control(
         self, device_id: str, session: P2PControlSession
     ) -> None:
-        if self._controls.get(device_id) is session:
-            self._controls.pop(device_id, None)
-        task = session.idle_task
-        if task is not None and task is not asyncio.current_task():
-            task.cancel()
-        process = session.process
-        if process.stdin is not None and not process.stdin.is_closing():
-            process.stdin.close()
-        await _wait_or_stop(process, timeout=2)
+        if session.cleanup_task is None:
+            if self._controls.get(device_id) is session:
+                self._controls.pop(device_id, None)
+            task = session.idle_task
+            if task is not None and task is not asyncio.current_task():
+                task.cancel()
+            session.cleanup_task = self._own_cleanup(self._cleanup_control(session))
+        await asyncio.shield(session.cleanup_task)
+
+    async def _cleanup_control(self, session: P2PControlSession) -> None:
+        tasks = (session.stderr_task,) if session.stderr_task is not None else ()
+        await _cleanup_process(session.process, tasks, timeout=2)
+        session.stderr.clear()
 
     async def _start_pipeline(
         self,
@@ -674,9 +737,8 @@ class MediaBridge:
             stderr=asyncio.subprocess.PIPE,
             env=worker_environment,
         )
-        assert worker.stdin is not None
-        worker.stdin.write(credentials.worker_payload())
-        await worker.stdin.drain()
+        worker_stderr = bytearray()
+        worker_stderr_task = asyncio.create_task(_drain_stream(worker.stderr, worker_stderr))
 
         output_args = (
             (
@@ -706,6 +768,9 @@ class MediaBridge:
             )
         )
         try:
+            assert worker.stdin is not None
+            worker.stdin.write(credentials.worker_payload())
+            await asyncio.wait_for(worker.stdin.drain(), timeout=5)
             transcoder = await asyncio.create_subprocess_exec(
                 self.ffmpeg_binary,
                 "-hide_banner",
@@ -715,8 +780,8 @@ class MediaBridge:
                 "65536",
                 "-analyzeduration",
                 "0",
-                "-f",
-                "hevc",
+                "-format_whitelist",
+                "h264,hevc",
                 "-i",
                 "pipe:0",
                 "-an",
@@ -725,10 +790,10 @@ class MediaBridge:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-        except Exception:
-            if worker.returncode is None:
-                worker.terminate()
-                await worker.wait()
+        except BaseException:
+            await asyncio.shield(
+                self._own_cleanup(_cleanup_process(worker, (worker_stderr_task,), timeout=0))
+            )
             raise
         assert worker.stdout is not None
         assert transcoder.stdin is not None
@@ -740,6 +805,11 @@ class MediaBridge:
             transcoder,
             relay,
             device_id=device_id,
+            stderr=worker_stderr,
+            stderr_tasks=(
+                worker_stderr_task,
+                asyncio.create_task(_drain_stream(transcoder.stderr)),
+            ),
         )
         self._pipelines.add(pipeline)
         return pipeline
@@ -825,8 +895,44 @@ async def _relay_stream(
         pass
     finally:
         destination.close()
-        with contextlib.suppress(BrokenPipeError, ConnectionResetError):
-            await destination.wait_closed()
+        with contextlib.suppress(BrokenPipeError, ConnectionResetError, TimeoutError):
+            await asyncio.wait_for(destination.wait_closed(), timeout=1)
+
+
+async def _drain_stream(
+    source: asyncio.StreamReader | None, buffer: bytearray | None = None
+) -> None:
+    if source is None:
+        return
+    with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+        while chunk := await source.read(16 * 1024):
+            if buffer is not None:
+                buffer.extend(chunk)
+                del buffer[:-16 * 1024]
+
+
+async def _finish_tasks(tasks: tuple[asyncio.Task[None], ...]) -> None:
+    if not tasks:
+        return
+    _, pending = await asyncio.wait(tasks, timeout=1)
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _cleanup_process(
+    process: asyncio.subprocess.Process,
+    tasks: tuple[asyncio.Task[None], ...] = (),
+    *,
+    timeout: float,
+) -> None:
+    if process.stdin is not None and not process.stdin.is_closing():
+        process.stdin.close()
+    stdout_task = asyncio.create_task(_drain_stream(process.stdout))
+    try:
+        await _wait_or_stop(process, timeout=timeout)
+    finally:
+        await _finish_tasks((*tasks, stdout_task))
 
 
 async def _wait_or_stop(process: asyncio.subprocess.Process, *, timeout: float) -> None:
@@ -843,39 +949,26 @@ async def _wait_or_stop(process: asyncio.subprocess.Process, *, timeout: float) 
     except TimeoutError:
         with contextlib.suppress(ProcessLookupError):
             process.kill()
-        await process.wait()
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(process.wait(), timeout=2)
 
 
 async def _pipeline_error_code(pipeline: MediaPipeline) -> str:
-    for process in (pipeline.worker, pipeline.transcoder):
-        if process.stderr is None:
-            continue
-        try:
-            raw = await asyncio.wait_for(process.stderr.read(16 * 1024), timeout=0.5)
-        except TimeoutError:
-            continue
-        text = raw.decode("utf-8", "replace")
-        marker = "P2P_ERROR "
-        if marker in text:
-            detail = text.rsplit(marker, 1)[1].splitlines()[0]
-            return detail.split(":", 1)[0]
+    if pipeline.stderr_tasks:
+        detail = await _process_error_code(pipeline.stderr_tasks[0], pipeline.stderr)
+        if detail:
+            return detail
     return "p2p_stream_unavailable"
 
 
-async def _process_error_code(process: asyncio.subprocess.Process) -> str:
-    if process.stderr is None:
-        return ""
-    try:
-        raw = await asyncio.wait_for(
-            process.stderr.read(16 * 1024), timeout=0.5
-        )
-    except TimeoutError:
-        return ""
-    text = raw.decode("utf-8", "replace")
+async def _process_error_code(task: asyncio.Task[None], buffer: bytearray) -> str:
+    await asyncio.wait((task,), timeout=0.5)
+    text = buffer.decode("utf-8", "replace")
     marker = "P2P_ERROR "
     if marker not in text:
         return ""
-    return text.rsplit(marker, 1)[1].splitlines()[0].split(":", 1)[0]
+    lines = text.rsplit(marker, 1)[1].splitlines()
+    return lines[0].split(":", 1)[0] if lines else ""
 
 
 async def _async_runtime_status(binary: str) -> tuple[bool, bool]:
