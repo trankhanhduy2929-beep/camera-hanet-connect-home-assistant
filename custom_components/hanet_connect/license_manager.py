@@ -34,6 +34,7 @@ _LOGGER = logging.getLogger(__name__)
 LICENSE_REFRESH_INTERVAL_SECONDS = 12 * 60 * 60
 LICENSE_REFRESH_JITTER_SECONDS = 10 * 60
 LICENSE_RETRY_INTERVAL_SECONDS = 60
+LICENSE_RETRY_MAX_INTERVAL_SECONDS = 15 * 60
 
 
 class HanetLicenseUnavailableError(HanetLicenseError):
@@ -63,6 +64,7 @@ class HanetLicenseManager:
         self.state = record.status
         self._task: asyncio.Task[None] | None = None
         self._retry = False
+        self._retry_attempts = 0
 
     @classmethod
     async def async_create(cls, hass: HomeAssistant) -> HanetLicenseManager:
@@ -93,10 +95,10 @@ class HanetLicenseManager:
             )
 
         manager = cls(hass, identity, store, record)
-        await manager.async_validate()
+        await manager.async_validate(allow_cached=True)
         return manager
 
-    async def async_validate(self) -> None:
+    async def async_validate(self, *, allow_cached: bool = False) -> None:
         """Refresh from the server, falling back to a signed cached lease."""
         self._retry = False
         try:
@@ -109,6 +111,21 @@ class HanetLicenseManager:
             raise HanetLicenseUnavailableError(
                 "license_invalid_configuration", self.identity.activation_code
             ) from err
+
+        if allow_cached:
+            try:
+                self._validate_cached_lease(client)
+            except HanetLicenseUnavailableError:
+                pass
+            else:
+                entitlement = self.entitlement
+                assert entitlement is not None
+                if (
+                    self.state == LICENSE_STATUS_ACTIVE
+                    and entitlement.expires_at - time()
+                    >= LICENSE_REFRESH_INTERVAL_SECONDS
+                ):
+                    return
 
         try:
             response = await client.async_refresh(self.record.refresh_token)
@@ -239,23 +256,32 @@ class HanetLicenseManager:
         self.state = self.entitlement.state_at()
         return remaining
 
+    def _next_delay(self) -> float:
+        if self._retry:
+            delay = min(
+                LICENSE_RETRY_INTERVAL_SECONDS * 2**self._retry_attempts,
+                LICENSE_RETRY_MAX_INTERVAL_SECONDS,
+            )
+            self._retry_attempts += 1
+        else:
+            self._retry_attempts = 0
+            delay = LICENSE_REFRESH_INTERVAL_SECONDS + random.randint(
+                0, LICENSE_REFRESH_JITTER_SECONDS
+            )
+        delay = min(delay, self._remaining_lease_seconds())
+        if self.entitlement is not None:
+            active_remaining = self.entitlement.expires_at - time()
+            if active_remaining > 0:
+                delay = min(delay, active_remaining)
+        return delay
+
     async def _async_refresh_loop(
         self,
         on_invalid: Callable[[HanetLicenseUnavailableError], Awaitable[None]],
     ) -> None:
         try:
             while True:
-                if self._retry:
-                    delay = LICENSE_RETRY_INTERVAL_SECONDS
-                else:
-                    delay = LICENSE_REFRESH_INTERVAL_SECONDS + random.randint(
-                        0, LICENSE_REFRESH_JITTER_SECONDS
-                    )
-                delay = min(delay, self._remaining_lease_seconds())
-                if self.entitlement is not None:
-                    active_remaining = self.entitlement.expires_at - time()
-                    if active_remaining > 0:
-                        delay = min(delay, active_remaining)
+                delay = self._next_delay()
                 await asyncio.sleep(delay)
                 remaining = self._remaining_lease_seconds()
                 try:
