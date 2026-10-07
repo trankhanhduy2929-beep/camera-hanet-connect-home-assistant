@@ -69,9 +69,10 @@ class HanetLicenseConnectionError(HanetLicenseError):
 class HanetLicenseResponseError(HanetLicenseError):
     """Raised when the portal rejects a request."""
 
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, *, authoritative: bool = False) -> None:
         super().__init__(code)
         self.code = code
+        self.authoritative = authoritative
 
 
 class HanetLicenseTokenError(HanetLicenseError):
@@ -471,8 +472,19 @@ class HanetLicenseClient:
         server_time = _parse_time(payload.get("server_time"))
         if server_time is None or server_time > time() + _SERVER_CLOCK_SKEW_SECONDS:
             raise HanetLicenseTokenError("invalid_license_server_time")
-        if not payload.get("valid"):
-            raise HanetLicenseResponseError(str(payload.get("error") or "invalid_license"))
+        if not isinstance(payload.get("valid"), bool):
+            raise HanetLicenseTokenError("invalid_license_entitlement")
+        if payload["valid"] is False:
+            code = str(payload.get("error") or "invalid_license")
+            raise HanetLicenseResponseError(
+                code,
+                authoritative=code in {
+                    "invalid_license", "license_blocked", "license_expired",
+                    "activation_limit", "installation_already_claimed",
+                    "installation_blocked", "installation_client_type_mismatch",
+                    "installation_key_mismatch",
+                },
+            )
 
         starts_at = _parse_time(payload.get("starts_at"))
         expires_at = _parse_time(payload.get("expires_at"))

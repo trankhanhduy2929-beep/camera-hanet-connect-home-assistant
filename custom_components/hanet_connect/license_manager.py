@@ -7,6 +7,7 @@ import contextlib
 import logging
 import random
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from time import time
 
 from homeassistant.config_entries import ConfigEntry
@@ -138,6 +139,20 @@ class HanetLicenseManager:
                 "license_invalid_configuration", self.identity.activation_code
             ) from err
         except HanetLicenseResponseError as err:
+            if err.authoritative:
+                self.entitlement = None
+                self.state = LICENSE_STATUS_EXPIRED
+                self.record = replace(
+                    self.record,
+                    status=self.state,
+                    lease_token=None,
+                    verification=None,
+                    updated_at=int(time()),
+                )
+                try:
+                    await self.store.async_save(self.record)
+                except Exception:
+                    _LOGGER.warning("HANET denied license cache could not be saved")
             raise HanetLicenseUnavailableError(
                 err.code, self.identity.activation_code
             ) from err
