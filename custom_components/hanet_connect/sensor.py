@@ -370,6 +370,11 @@ class HanetLastPersonSensor(HanetEventSensor):
         super().__init__(coordinator, device_id, "last_person")
 
     @property
+    def event(self) -> dict[str, Any]:
+        """Return the latest event that carries a recognition result."""
+        return self.coordinator.latest_recognition_event(self.device_id) or {}
+
+    @property
     def native_value(self) -> str | None:
         """Return the recognized person's name."""
         value = self.event.get("person_name")
@@ -402,6 +407,11 @@ class HanetRecognitionResultSensor(HanetEventSensor):
 
     def __init__(self, coordinator: HanetCoordinator, device_id: str) -> None:
         super().__init__(coordinator, device_id, "recognition_result")
+
+    @property
+    def event(self) -> dict[str, Any]:
+        """Return the latest event that carries a recognition result."""
+        return self.coordinator.latest_recognition_event(self.device_id) or {}
 
     @property
     def native_value(self) -> str | None:

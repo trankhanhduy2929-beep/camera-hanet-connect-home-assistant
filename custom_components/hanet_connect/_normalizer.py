@@ -27,6 +27,7 @@ EVENT_KIND_BY_CODE = {
     2: "stranger",
     3: "alarm",
     4: "human",
+    25: "other",
 }
 EVENT_KIND_NAMES = {
     "employee": "Nhân viên",
@@ -37,6 +38,7 @@ EVENT_KIND_NAMES = {
     "plate": "Biển số",
     "checkin": "Chấm công",
     "face": "Khuôn mặt",
+    "other": "Sự kiện khác",
 }
 
 
@@ -564,6 +566,8 @@ def _event_title(kind: str) -> str:
         return "Phát hiện người lạ"
     if normalized == "alarm":
         return "Cảnh báo"
+    if normalized == "other":
+        return "Sự kiện khác"
     if normalized in {"log", "checkin", "person", "face", "realtimecheckin"}:
         return "Người chưa xác định"
     if "human" in normalized:

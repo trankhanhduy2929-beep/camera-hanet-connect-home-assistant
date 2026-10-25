@@ -64,11 +64,21 @@ class HanetRecognitionBinarySensor(HanetEntity, BinarySensorEntity):
     """Base binary sensor backed by the latest recognition event."""
 
     expected_result = ""
+    identity_only = False
+    recency_seconds: int | None = 300
 
     @property
     def event(self) -> dict[str, Any]:
-        """Return the latest event for this camera."""
-        return self.coordinator.latest_event(self.device_id) or {}
+        """Return the latest recognition event for this camera."""
+        if self.identity_only:
+            event = self.coordinator.latest_identity_event(
+                self.device_id, within_seconds=self.recency_seconds
+            )
+        else:
+            event = self.coordinator.latest_stranger_event(
+                self.device_id, within_seconds=self.recency_seconds
+            )
+        return event or {}
 
     @property
     def is_on(self) -> bool:
@@ -98,6 +108,7 @@ class HanetKnownPersonSensor(HanetRecognitionBinarySensor):
     _attr_translation_key = "known_person"
     _attr_icon = "mdi:account-check"
     expected_result = "known"
+    identity_only = True
 
     def __init__(self, coordinator: Any, device_id: str) -> None:
         super().__init__(coordinator, device_id, "known_person")

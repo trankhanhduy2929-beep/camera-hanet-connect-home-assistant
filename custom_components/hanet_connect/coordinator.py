@@ -7,7 +7,7 @@ import json
 import logging
 import time
 from collections.abc import Mapping
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -24,6 +24,19 @@ from .api import (
 from .const import EVENT_TYPE
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _recent(occurred_at: Any, within_seconds: int) -> bool:
+    """Return whether an ISO timestamp falls inside the last N seconds."""
+    if not isinstance(occurred_at, str) or not occurred_at:
+        return True
+    try:
+        moment = datetime.fromisoformat(occurred_at.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return (datetime.now(UTC) - moment).total_seconds() <= within_seconds
 
 
 class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -89,6 +102,58 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ),
             None,
         )
+
+    def latest_identity_event(
+        self, device_id: str, within_seconds: int | None = None
+    ) -> dict[str, Any] | None:
+        """Return the latest event tied to a recognized person."""
+        return self._latest_matching(
+            device_id,
+            lambda event: bool(event.get("person_id"))
+            or str(event.get("kind") or "").casefold() in {"employee", "visitor"},
+            within_seconds,
+        )
+
+    def latest_stranger_event(
+        self, device_id: str, within_seconds: int | None = None
+    ) -> dict[str, Any] | None:
+        """Return the latest event classified as a stranger."""
+        return self._latest_matching(
+            device_id,
+            lambda event: str(event.get("kind") or "").casefold() == "stranger",
+            within_seconds,
+        )
+
+    def latest_recognition_event(self, device_id: str) -> dict[str, Any] | None:
+        """Return the latest familiar or stranger event."""
+        identity = self.latest_identity_event(device_id)
+        stranger = self.latest_stranger_event(device_id)
+        if identity and stranger:
+            if str(identity.get("occurred_at") or "") >= str(
+                stranger.get("occurred_at") or ""
+            ):
+                return identity
+            return stranger
+        return identity or stranger
+
+    def _latest_matching(
+        self,
+        device_id: str,
+        predicate: Any,
+        within_seconds: int | None,
+    ) -> dict[str, Any] | None:
+        wanted = str(device_id)
+        for event in self.events:
+            if str(event.get("device_id") or "") != wanted:
+                continue
+            if not predicate(event):
+                continue
+            if within_seconds is not None and not _recent(
+                event.get("occurred_at"), within_seconds
+            ):
+                return None
+            return event
+        return None
 
     @property
     def people(self) -> list[dict[str, Any]]:

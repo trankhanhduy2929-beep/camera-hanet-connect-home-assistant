@@ -329,7 +329,11 @@ def setting_is_writable(path: tuple[str, ...]) -> bool:
 
 
 def event_recognition(event: Mapping[str, Any]) -> str | None:
-    """Classify the latest camera event as familiar or stranger."""
+    """Classify a recognition event as familiar or stranger.
+
+    Motion and alarm events are not recognition results, so they return
+    ``None`` instead of being reported as strangers.
+    """
     kind = _canonical_key(str(event.get("kind") or ""))
     if kind in {"employee", "visitor"}:
         return "known"
@@ -337,8 +341,6 @@ def event_recognition(event: Mapping[str, Any]) -> str | None:
         return "stranger"
     if event.get("recognized") or event.get("person_id"):
         return "known"
-    if kind in {"face", "human", "person", "checkin"}:
-        return "stranger"
     return None
 
 
