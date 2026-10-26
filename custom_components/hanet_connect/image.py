@@ -27,7 +27,21 @@ async def async_setup_entry(
     coordinator = entry.runtime_data.coordinator
 
     def build(device: Mapping[str, Any]) -> list[ImageEntity]:
-        return [HanetLatestEventImage(coordinator, str(device["id"]))]
+        device_id = str(device["id"])
+        return [
+            HanetLatestEventImage(coordinator, device_id),
+            *(
+                HanetGroupEventImage(
+                    coordinator,
+                    device_id,
+                    suffix=suffix,
+                    translation_key=translation_key,
+                    group=group,
+                    icon=icon,
+                )
+                for suffix, translation_key, group, icon in GROUP_IMAGES
+            ),
+        ]
 
     entry.async_on_unload(
         setup_dynamic_entities(coordinator, async_add_entities, build)
@@ -50,16 +64,27 @@ async def async_setup_entry(
     entry.async_on_unload(coordinator.async_add_listener(discover_people))
 
 
-class HanetLatestEventImage(HanetEntity, ImageEntity):
-    """Expose the latest event picture through the authenticated gateway."""
+GROUP_IMAGES = (
+    ("alarm_image", "alarm_image", "alarm", "mdi:alarm-light"),
+    ("motion_image", "motion_image", "motion", "mdi:motion-sensor"),
+    ("stranger_image", "stranger_image", "stranger", "mdi:account-alert"),
+    ("known_person_image", "known_person_image", "known", "mdi:account-check"),
+    ("employee_image", "employee_image", "employee", "mdi:home-account"),
+)
 
-    _attr_translation_key = "latest_event_image"
+
+class HanetEventImage(HanetEntity, ImageEntity):
+    """Base event picture entity served through the authenticated gateway."""
+
     _attr_content_type = "image/jpeg"
 
-    def __init__(self, coordinator: Any, device_id: str) -> None:
-        HanetEntity.__init__(self, coordinator, device_id, "latest_event_image")
+    def __init__(self, coordinator: Any, device_id: str, suffix: str) -> None:
+        HanetEntity.__init__(self, coordinator, device_id, suffix)
         ImageEntity.__init__(self, coordinator.hass, verify_ssl=True)
         self._event_id = ""
+
+    def _selected_event(self) -> dict[str, Any] | None:
+        raise NotImplementedError
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -73,8 +98,8 @@ class HanetLatestEventImage(HanetEntity, ImageEntity):
 
     @property
     def event(self) -> dict[str, Any]:
-        """Return the latest camera event."""
-        return self.coordinator.latest_event(self.device_id) or {}
+        """Return the event that drives this picture."""
+        return self._selected_event() or {}
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -98,6 +123,42 @@ class HanetLatestEventImage(HanetEntity, ImageEntity):
         if content_type.startswith("image/"):
             self._attr_content_type = content_type
         return body
+
+
+class HanetLatestEventImage(HanetEventImage):
+    """Expose the latest event picture of any kind."""
+
+    _attr_translation_key = "latest_event_image"
+
+    def __init__(self, coordinator: Any, device_id: str) -> None:
+        super().__init__(coordinator, device_id, "latest_event_image")
+
+    def _selected_event(self) -> dict[str, Any] | None:
+        return self.coordinator.latest_event(self.device_id)
+
+
+class HanetGroupEventImage(HanetEventImage):
+    """Expose the latest picture for one recognition group."""
+
+    group = ""
+
+    def __init__(
+        self,
+        coordinator: Any,
+        device_id: str,
+        *,
+        suffix: str,
+        translation_key: str,
+        group: str,
+        icon: str,
+    ) -> None:
+        self._attr_translation_key = translation_key
+        self._attr_icon = icon
+        self.group = group
+        super().__init__(coordinator, device_id, suffix)
+
+    def _selected_event(self) -> dict[str, Any] | None:
+        return self.coordinator.latest_group_event(self.device_id, self.group)
 
 
 class HanetPersonImage(

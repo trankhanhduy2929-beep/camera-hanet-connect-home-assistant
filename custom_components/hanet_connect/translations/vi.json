@@ -163,6 +163,21 @@
     "image": {
       "latest_event_image": {
         "name": "Ảnh sự kiện mới nhất"
+      },
+      "alarm_image": {
+        "name": "Ảnh báo động"
+      },
+      "motion_image": {
+        "name": "Ảnh chuyển động"
+      },
+      "stranger_image": {
+        "name": "Ảnh người lạ"
+      },
+      "known_person_image": {
+        "name": "Ảnh người quen"
+      },
+      "employee_image": {
+        "name": "Ảnh người nhà"
       }
     },
     "button": {

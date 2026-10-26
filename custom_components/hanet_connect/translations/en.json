@@ -163,6 +163,21 @@
     "image": {
       "latest_event_image": {
         "name": "Latest event image"
+      },
+      "alarm_image": {
+        "name": "Alarm image"
+      },
+      "motion_image": {
+        "name": "Motion image"
+      },
+      "stranger_image": {
+        "name": "Stranger image"
+      },
+      "known_person_image": {
+        "name": "Known person image"
+      },
+      "employee_image": {
+        "name": "Resident image"
       }
     },
     "button": {
