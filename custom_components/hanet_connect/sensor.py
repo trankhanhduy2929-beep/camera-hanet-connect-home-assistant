@@ -27,6 +27,7 @@ from .entity import (
     setting_leaves,
     setup_dynamic_entities,
 )
+from .groups import event_attributes
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -55,6 +56,7 @@ DEVICE_DATA_SENSORS = (
         key="storage_status",
         translation_key="storage_status",
         icon="mdi:sd",
+        entity_category=EntityCategory.DIAGNOSTIC,
         keys=("storage_status", "sd_status", "sdcard_status", "sd_state"),
     ),
     HanetDataSensorDescription(
@@ -69,24 +71,28 @@ DEVICE_DATA_SENSORS = (
         key="resolution",
         translation_key="resolution",
         icon="mdi:video-high-definition",
+        entity_category=EntityCategory.DIAGNOSTIC,
         keys=("resolution", "video_quality", "quality"),
     ),
     HanetDataSensorDescription(
         key="volume",
         translation_key="volume",
         icon="mdi:volume-high",
+        entity_category=EntityCategory.DIAGNOSTIC,
         keys=("volume",),
     ),
     HanetDataSensorDescription(
         key="sd_free_space",
         translation_key="sd_free_space",
         icon="mdi:sd",
+        entity_category=EntityCategory.DIAGNOSTIC,
         keys=("sd_freesize", "sd_free_space"),
     ),
     HanetDataSensorDescription(
         key="sd_total_space",
         translation_key="sd_total_space",
         icon="mdi:sd",
+        entity_category=EntityCategory.DIAGNOSTIC,
         keys=("sd_spacesize", "sd_total_space"),
     ),
 )
@@ -328,6 +334,7 @@ class HanetEventSensor(HanetEntity, SensorEntity):
             key: value
             for key, value in {
                 **super().extra_state_attributes,
+                **event_attributes(event),
                 "event_id": event.get("id"),
                 "event_type": event.get("kind"),
                 "event_type_name": event.get("kind_name"),
@@ -433,6 +440,11 @@ class HanetRecognitionTimeSensor(HanetEventSensor):
 
     def __init__(self, coordinator: HanetCoordinator, device_id: str) -> None:
         super().__init__(coordinator, device_id, "recognition_time")
+
+    @property
+    def event(self) -> dict[str, Any]:
+        """Return the latest familiar or stranger event."""
+        return self.coordinator.latest_recognition_event(self.device_id) or {}
 
     @property
     def native_value(self) -> datetime | None:

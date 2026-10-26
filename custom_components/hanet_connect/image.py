@@ -15,6 +15,7 @@ from . import HanetConfigEntry
 from .api import HanetGatewayError
 from .coordinator import HanetCoordinator
 from .entity import HanetEntity, setup_dynamic_entities
+from .groups import event_attributes
 
 
 async def async_setup_entry(
@@ -74,6 +75,14 @@ class HanetLatestEventImage(HanetEntity, ImageEntity):
     def event(self) -> dict[str, Any]:
         """Return the latest camera event."""
         return self.coordinator.latest_event(self.device_id) or {}
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the picture link, capture time and category."""
+        return {
+            **super().extra_state_attributes,
+            **event_attributes(self.event),
+        }
 
     async def async_image(self) -> bytes | None:
         """Fetch the event image without exposing a cloud URL or gateway key."""

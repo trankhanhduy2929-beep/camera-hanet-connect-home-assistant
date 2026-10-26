@@ -69,14 +69,23 @@
   },
   "entity": {
     "binary_sensor": {
-      "online": {
-        "name": "Kết nối camera"
+      "alarm": {
+        "name": "Báo động"
       },
-      "known_person": {
-        "name": "Phát hiện người quen"
+      "motion": {
+        "name": "Chuyển động"
       },
       "stranger": {
-        "name": "Phát hiện người lạ"
+        "name": "Người lạ"
+      },
+      "known_person": {
+        "name": "Người quen"
+      },
+      "employee": {
+        "name": "Người nhà"
+      },
+      "online": {
+        "name": "Kết nối camera"
       },
       "media_bridge": {
         "name": "P2P trực tiếp"
@@ -122,7 +131,7 @@
         "name": "Sự kiện gần nhất"
       },
       "last_person": {
-        "name": "Người gần nhất"
+        "name": "Người nhận diện gần nhất"
       },
       "event_type": {
         "name": "Loại sự kiện"

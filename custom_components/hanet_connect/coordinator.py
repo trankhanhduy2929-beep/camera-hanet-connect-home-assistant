@@ -22,6 +22,7 @@ from .api import (
     HanetGatewayError,
 )
 from .const import EVENT_TYPE
+from .groups import group_matches
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -121,6 +122,16 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self._latest_matching(
             device_id,
             lambda event: str(event.get("kind") or "").casefold() == "stranger",
+            within_seconds,
+        )
+
+    def latest_group_event(
+        self, device_id: str, group: str, within_seconds: int | None = None
+    ) -> dict[str, Any] | None:
+        """Return the latest event belonging to one sensor group."""
+        return self._latest_matching(
+            device_id,
+            lambda event: group_matches(group, event),
             within_seconds,
         )
 
