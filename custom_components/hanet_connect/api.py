@@ -8,7 +8,7 @@ import copy
 import json
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
@@ -365,6 +365,20 @@ class HanetGatewayClient:
         )
         self._events = events[: min(max(int(limit), 1), 2000)]
         return [dict(event) for event in self._events]
+
+    async def async_event_stream(
+        self, *, last_event_id: str | None = None
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Yield realtime HANET server-sent events for every place."""
+        places = self._places or await self._load_places()
+        place_ids = [str(place["id"]) for place in places if place.get("id")]
+        if not place_ids:
+            return
+        async for event in self.client.iter_events(
+            payload={"place_ids": place_ids},
+            last_event_id=last_event_id,
+        ):
+            yield event
 
     async def async_people(self) -> list[dict[str, Any]]:
         """Return both employees and visitors, never only the default type."""

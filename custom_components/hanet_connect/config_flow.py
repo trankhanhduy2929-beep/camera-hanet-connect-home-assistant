@@ -23,6 +23,8 @@ from .api import (
 from .const import (
     CONF_API_BASE,
     CONF_LICENSE_KEY,
+    CONF_NOTIFY_PERSISTENT,
+    CONF_NOTIFY_SERVICE,
     CONF_SCAN_INTERVAL,
     CONF_VERIFY_TLS,
     DEFAULT_API_BASE,
@@ -344,8 +346,45 @@ class HanetConnectOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Open license management."""
-        return await self.async_step_license()
+        """Open license or notification settings."""
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["notifications", "license"],
+        )
+
+    async def async_step_notifications(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Choose the notification target for recognition events."""
+        options = dict(self.config_entry.options)
+        if user_input is not None:
+            return self.async_create_entry(
+                title="",
+                data={**options, **user_input},
+            )
+        return self.async_show_form(
+            step_id="notifications",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_NOTIFY_SERVICE,
+                        default=str(
+                            options.get(CONF_NOTIFY_SERVICE, "")
+                        ),
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_NOTIFY_PERSISTENT,
+                        default=bool(
+                            options.get(CONF_NOTIFY_PERSISTENT, True)
+                        ),
+                    ): selector.BooleanSelector(),
+                }
+            ),
+        )
 
     async def async_step_license(
         self, user_input: dict[str, Any] | None = None

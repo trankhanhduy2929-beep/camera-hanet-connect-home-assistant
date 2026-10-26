@@ -3,25 +3,35 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from hashlib import sha1
 from typing import Any
 
+from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from ._errors import HanetApiError
+from ._normalizer import normalize_event
 from .api import (
     HanetGatewayAuthError,
     HanetGatewayClient,
     HanetGatewayConnectionError,
     HanetGatewayError,
 )
-from .const import EVENT_TYPE
+from .const import (
+    CONF_NOTIFY_PERSISTENT,
+    CONF_NOTIFY_SERVICE,
+    EVENT_TYPE,
+    NOTIFY_KINDS,
+)
 from .groups import group_matches
 
 _LOGGER = logging.getLogger(__name__)
@@ -64,6 +74,8 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._people: list[dict[str, Any]] = []
         self._departments: list[dict[str, Any]] = []
         self._metadata_refreshed_at = 0.0
+        self._realtime_task: asyncio.Task[None] | None = None
+        self._realtime_last_id: str | None = None
 
     @property
     def devices(self) -> list[dict[str, Any]]:
@@ -188,6 +200,183 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             None,
         )
 
+    def start_realtime(self) -> None:
+        """Subscribe to the HANET event stream for immediate state changes."""
+        if self._realtime_task is not None and not self._realtime_task.done():
+            return
+        self._realtime_task = self.hass.async_create_background_task(
+            self._realtime_loop(),
+            "hanet_connect_event_stream",
+        )
+
+    async def async_stop_realtime(self) -> None:
+        """Cancel the realtime event stream."""
+        task = self._realtime_task
+        self._realtime_task = None
+        if task is None or task.done():
+            return
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    async def _realtime_loop(self) -> None:
+        delay = 2
+        while True:
+            try:
+                async for raw in self.client.async_event_stream(
+                    last_event_id=self._realtime_last_id
+                ):
+                    if raw.get("event") == "ping":
+                        continue
+                    if raw.get("id"):
+                        self._realtime_last_id = str(raw["id"])
+                    payload = raw.get("data")
+                    if not isinstance(payload, Mapping):
+                        payload = {
+                            "event": raw.get("event"),
+                            "data": payload,
+                        }
+                    received_at = datetime.now(UTC).isoformat(
+                        timespec="seconds"
+                    )
+                    rows = payload if isinstance(payload, list) else [payload]
+                    for row in rows:
+                        if not isinstance(row, Mapping):
+                            continue
+                        self._apply_realtime_event(
+                            normalize_event(
+                                row,
+                                source="sse",
+                                received_at=received_at,
+                            )
+                        )
+                    delay = 2
+            except asyncio.CancelledError:
+                raise
+            except HanetGatewayAuthError as err:
+                _LOGGER.info("HANET event stream needs a new login: %s", err)
+                await asyncio.sleep(60)
+                continue
+            except (HanetGatewayError, HanetApiError) as err:
+                status = getattr(err, "status", None)
+                if status in {401, 403}:
+                    _LOGGER.debug("HANET event stream rejected credentials")
+                    await asyncio.sleep(30)
+                    continue
+                if status in {404, 405}:
+                    _LOGGER.info(
+                        "HANET realtime stream is unavailable; polling only"
+                    )
+                    return
+                _LOGGER.debug("HANET event stream disconnected: %s", err)
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning(
+                    "HANET event stream error: %s", type(err).__name__
+                )
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 60)
+
+    def _apply_realtime_event(self, event: Mapping[str, Any]) -> None:
+        item = dict(event)
+        key = _event_key(item)
+        if self._known_events is None:
+            self._known_events = {_event_key(row) for row in self.events}
+        if key in self._known_events:
+            return
+        events = [
+            item,
+            *(row for row in self.events if _event_key(row) != key),
+        ][:250]
+        data = dict(self.data) if isinstance(self.data, Mapping) else {}
+        data["events"] = events
+        self._known_events.add(key)
+        self.data = data
+        self.last_update_success = True
+        self.async_update_listeners()
+        self.hass.bus.async_fire(
+            EVENT_TYPE,
+            {"config_entry_id": self.entry.entry_id, **item},
+        )
+        self._notify(item)
+
+    def _notify(self, event: Mapping[str, Any]) -> None:
+        kind = str(event.get("kind") or "").casefold()
+        if kind not in NOTIFY_KINDS:
+            return
+        titles = {
+            "alarm": "Báo động",
+            "employee": "Người nhà",
+            "visitor": "Khách",
+            "stranger": "Người lạ",
+            "plate": "Biển số",
+        }
+        device_id = str(event.get("device_id") or "")
+        device = self.device(device_id) or {}
+        camera = str(
+            event.get("device_name")
+            or device.get("name")
+            or device_id
+            or ""
+        ).strip()
+        title = titles.get(kind, "Sự kiện HANET")
+        header = f"{title} · {camera}" if camera else title
+        details = [
+            str(value).strip()
+            for value in (
+                event.get("person_name"),
+                _display_time(event.get("occurred_at")),
+            )
+            if str(value or "").strip()
+        ]
+        image = str(event.get("image_url") or "").strip()
+        message = " · ".join(details)
+        if image:
+            message = f"{message}\n{image}".strip()
+        if bool(self.entry.options.get(CONF_NOTIFY_PERSISTENT, True)):
+            persistent_notification.async_create(
+                self.hass,
+                message or title,
+                title=header,
+                notification_id=(
+                    f"hanet_connect_{self.entry.entry_id}_"
+                    f"{sha1(f'{device_id}:{kind}'.encode()).hexdigest()[:12]}"
+                ),
+            )
+        service = self._notify_service()
+        if not service:
+            return
+        payload: dict[str, Any] = {
+            "title": header,
+            "message": message or title,
+        }
+        if image:
+            payload["data"] = {"image": image}
+        self.hass.async_create_task(
+            self.hass.services.async_call(
+                "notify", service, payload, blocking=False
+            )
+        )
+
+    def _notify_service(self) -> str:
+        configured = str(
+            self.entry.options.get(CONF_NOTIFY_SERVICE) or ""
+        ).strip()
+        if configured.startswith("notify."):
+            configured = configured.removeprefix("notify.")
+        if configured:
+            return (
+                configured
+                if self.hass.services.has_service("notify", configured)
+                else ""
+            )
+        services = self.hass.services.async_services().get("notify", {})
+        mobile = sorted(
+            name
+            for name in services
+            if name.startswith("mobile_app_")
+        )
+        return mobile[0] if len(mobile) == 1 else ""
+
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             state = await self.client.async_state()
@@ -239,12 +428,18 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not event_keys:
             return
         for item in reversed(rows):
-            if _event_key(item) not in self._known_events:
-                self.hass.bus.async_fire(
-                    EVENT_TYPE,
-                    {"config_entry_id": self.entry.entry_id, **dict(item)},
-                )
-        self._known_events = event_keys
+            if _event_key(item) in self._known_events:
+                continue
+            self.hass.bus.async_fire(
+                EVENT_TYPE,
+                {"config_entry_id": self.entry.entry_id, **dict(item)},
+            )
+            self._notify(item)
+        self._known_events.update(event_keys)
+        if len(self._known_events) > 10000:
+            self._known_events = set(
+                list(self._known_events)[-5000:]
+            )
 
 
 def _event_key(event: Mapping[str, Any]) -> str:
@@ -252,3 +447,15 @@ def _event_key(event: Mapping[str, Any]) -> str:
         if event.get(key) is not None:
             return f"{key}:{event[key]}"
     return json.dumps(dict(event), sort_keys=True, default=str, separators=(",", ":"))
+
+
+def _display_time(value: Any) -> str:
+    if not isinstance(value, str) or not value:
+        return ""
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return value
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return moment.astimezone().strftime("%H:%M %d/%m/%Y")

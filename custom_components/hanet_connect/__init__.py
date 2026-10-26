@@ -449,6 +449,7 @@ async def async_setup_entry(
         await coordinator.async_config_entry_first_refresh()
         entry.runtime_data = HanetRuntimeData(client, coordinator, license_manager)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        coordinator.start_realtime()
     except Exception:
         await client.async_close()
         raise
@@ -468,6 +469,7 @@ async def async_unload_entry(
         entry, PLATFORMS
     )
     if unloaded:
+        await entry.runtime_data.coordinator.async_stop_realtime()
         await entry.runtime_data.license_manager.async_stop()
         await entry.runtime_data.client.async_close()
     return unloaded

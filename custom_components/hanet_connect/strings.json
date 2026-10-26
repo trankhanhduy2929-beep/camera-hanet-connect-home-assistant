@@ -356,6 +356,21 @@
       "license_pending": {
         "title": "Waiting for approval",
         "description": "This server uses manual approval. Installation code: {activation_code}. Send this code to the seller, then select Submit after approval."
+      },
+      "init": {
+        "title": "HANET Connect",
+        "menu_options": {
+          "notifications": "Notifications",
+          "license": "License and activation"
+        }
+      },
+      "notifications": {
+        "title": "Event notifications",
+        "description": "Notify for alarms, strangers, residents, visitors and plates. Leave the service blank to show notifications only in Home Assistant; a single Companion device is detected automatically.",
+        "data": {
+          "notify_service": "Notify service (for example notify.mobile_app_abc)",
+          "notify_persistent": "Show notifications in Home Assistant"
+        }
       }
     },
     "error": {

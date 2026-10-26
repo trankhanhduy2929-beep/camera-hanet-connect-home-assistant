@@ -7,16 +7,21 @@ from typing import Final
 from homeassistant.const import Platform
 
 DOMAIN: Final = "hanet_connect"
-INTEGRATION_VERSION: Final = "1.0.10"
+INTEGRATION_VERSION: Final = "1.0.11"
 CONF_API_BASE: Final = "api_base_url"
 CONF_LICENSE_KEY: Final = "license_key"
 CONF_VERIFY_TLS: Final = "verify_tls"
 CONF_SCAN_INTERVAL: Final = "scan_interval"
+CONF_NOTIFY_SERVICE: Final = "notify_service"
+CONF_NOTIFY_PERSISTENT: Final = "notify_persistent"
 DEFAULT_API_BASE: Final = "https://api-camera3.hanet.ai/v4"
 DEFAULT_SCAN_INTERVAL: Final = 30
 MIN_SCAN_INTERVAL: Final = 15
 MAX_SCAN_INTERVAL: Final = 3600
 EVENT_TYPE: Final = "hanet_connect_event"
+NOTIFY_KINDS: Final = frozenset(
+    {"alarm", "employee", "visitor", "stranger", "plate"}
+)
 
 PLATFORMS: Final = (
     Platform.BINARY_SENSOR,

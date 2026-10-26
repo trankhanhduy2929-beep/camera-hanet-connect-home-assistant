@@ -356,6 +356,21 @@
       "license_pending": {
         "title": "Đang chờ duyệt",
         "description": "Server đang dùng chế độ duyệt tay. Mã cài đặt: {activation_code}. Gửi mã cho người bán, sau đó bấm Gửi khi đã được duyệt."
+      },
+      "init": {
+        "title": "HANET Connect",
+        "menu_options": {
+          "notifications": "Thông báo",
+          "license": "License và kích hoạt"
+        }
+      },
+      "notifications": {
+        "title": "Thông báo sự kiện",
+        "description": "Thông báo khi có báo động, người lạ, người nhà, khách hoặc biển số. Để trống dịch vụ notify để chỉ hiện trong Home Assistant; nếu có đúng một thiết bị Companion, hệ thống tự gửi.",
+        "data": {
+          "notify_service": "Dịch vụ notify (ví dụ notify.mobile_app_abc)",
+          "notify_persistent": "Hiện thông báo trong Home Assistant"
+        }
       }
     },
     "error": {
