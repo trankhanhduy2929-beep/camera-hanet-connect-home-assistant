@@ -75,7 +75,12 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._departments: list[dict[str, Any]] = []
         self._metadata_refreshed_at = 0.0
         self._realtime_task: asyncio.Task[None] | None = None
+        self._watch_task: asyncio.Task[None] | None = None
         self._realtime_last_id: str | None = None
+        self._base_interval = timedelta(seconds=scan_interval)
+        self.event_transport = "starting"
+        self.last_event_at: str | None = None
+        self.last_event_latency: float | None = None
 
     @property
     def devices(self) -> list[dict[str, Any]]:
@@ -201,33 +206,66 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     def start_realtime(self) -> None:
-        """Subscribe to the HANET event stream for immediate state changes."""
-        if self._realtime_task is not None and not self._realtime_task.done():
-            return
-        self._realtime_task = self.hass.async_create_background_task(
-            self._realtime_loop(),
-            "hanet_connect_event_stream",
-        )
+        """Subscribe to the stream and poll recent events like the mobile app."""
+        if self._realtime_task is None or self._realtime_task.done():
+            self._realtime_task = self.hass.async_create_background_task(
+                self._realtime_loop(),
+                "hanet_connect_event_stream",
+            )
+        if self._watch_task is None or self._watch_task.done():
+            self._watch_task = self.hass.async_create_background_task(
+                self._event_watch_loop(),
+                "hanet_connect_event_watch",
+            )
 
     async def async_stop_realtime(self) -> None:
-        """Cancel the realtime event stream."""
-        task = self._realtime_task
+        """Cancel the realtime stream and the recent-event watcher."""
+        tasks = [
+            task
+            for task in (self._realtime_task, self._watch_task)
+            if task is not None
+        ]
         self._realtime_task = None
-        if task is None or task.done():
-            return
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+        self._watch_task = None
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    async def _event_watch_loop(self) -> None:
+        """Poll recent history every 5 seconds, matching the mobile app."""
+        while True:
+            await asyncio.sleep(5)
+            try:
+                rows = await self.client.async_events(limit=30)
+            except asyncio.CancelledError:
+                raise
+            except HanetGatewayAuthError as err:
+                _LOGGER.debug("HANET event watch auth error: %s", err)
+                await asyncio.sleep(25)
+                continue
+            except (HanetGatewayConnectionError, HanetGatewayError) as err:
+                _LOGGER.debug("HANET event watch failed: %s", err)
+                continue
+            for item in reversed(rows):
+                if isinstance(item, Mapping):
+                    self._apply_realtime_event(item)
 
     async def _realtime_loop(self) -> None:
         delay = 2
         while True:
+            connected = False
             try:
                 async for raw in self.client.async_event_stream(
                     last_event_id=self._realtime_last_id
                 ):
                     if raw.get("event") == "ping":
                         continue
+                    if not connected:
+                        connected = True
+                        self.event_transport = "sse"
+                        _LOGGER.info("HANET realtime stream connected")
                     if raw.get("id"):
                         self._realtime_last_id = str(raw["id"])
                     payload = raw.get("data")
@@ -260,39 +298,55 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except (HanetGatewayError, HanetApiError) as err:
                 status = getattr(err, "status", None)
                 if status in {401, 403}:
+                    self.event_transport = "auth-error"
                     _LOGGER.debug("HANET event stream rejected credentials")
                     await asyncio.sleep(30)
                     continue
                 if status in {404, 405}:
                     _LOGGER.info(
-                        "HANET realtime stream is unavailable; polling only"
+                        "HANET realtime stream is unavailable; fast polling"
                     )
+                    self.event_transport = "polling"
+                    self._enable_fast_polling()
                     return
+                self.event_transport = "reconnecting"
                 _LOGGER.debug("HANET event stream disconnected: %s", err)
             except Exception as err:  # noqa: BLE001
+                self.event_transport = "reconnecting"
                 _LOGGER.warning(
                     "HANET event stream error: %s", type(err).__name__
                 )
             await asyncio.sleep(delay)
             delay = min(delay * 2, 60)
 
+    def _enable_fast_polling(self) -> None:
+        fast = min(self._base_interval, timedelta(seconds=5))
+        if self.update_interval == fast:
+            return
+        self.update_interval = fast
+        self.hass.async_create_task(self.async_request_refresh())
+
     def _apply_realtime_event(self, event: Mapping[str, Any]) -> None:
         item = dict(event)
         key = _event_key(item)
         if self._known_events is None:
             self._known_events = {_event_key(row) for row in self.events}
-        if key in self._known_events:
-            return
+        is_new = key not in self._known_events
+        self._known_events.add(key)
         events = [
             item,
             *(row for row in self.events if _event_key(row) != key),
         ][:250]
         data = dict(self.data) if isinstance(self.data, Mapping) else {}
         data["events"] = events
-        self._known_events.add(key)
+        data.setdefault("devices", self.devices)
         self.data = data
         self.last_update_success = True
+        self.last_event_at = str(item.get("occurred_at") or "")
+        self.last_event_latency = _event_age(self.last_event_at)
         self.async_update_listeners()
+        if not is_new:
+            return
         self.hass.bus.async_fire(
             EVENT_TYPE,
             {"config_entry_id": self.entry.entry_id, **item},
@@ -459,3 +513,15 @@ def _display_time(value: Any) -> str:
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=UTC)
     return moment.astimezone().strftime("%H:%M %d/%m/%Y")
+
+
+def _event_age(value: str) -> float | None:
+    if not value:
+        return None
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return round((datetime.now(UTC) - moment).total_seconds(), 1)

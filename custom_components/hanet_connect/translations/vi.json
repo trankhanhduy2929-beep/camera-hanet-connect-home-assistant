@@ -153,6 +153,9 @@
       },
       "departments": {
         "name": "Phòng ban"
+      },
+      "realtime_stream": {
+        "name": "Luồng realtime"
       }
     },
     "event": {

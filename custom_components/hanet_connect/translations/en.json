@@ -153,6 +153,9 @@
       },
       "departments": {
         "name": "Departments"
+      },
+      "realtime_stream": {
+        "name": "Realtime stream"
       }
     },
     "event": {

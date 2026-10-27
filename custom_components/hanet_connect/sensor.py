@@ -111,6 +111,7 @@ async def async_setup_entry(
         device_id = str(device["id"])
         return [
             HanetFirmwareSensor(coordinator, device_id),
+            HanetRealtimeSensor(coordinator, device_id),
             *(
                 HanetDeviceDataSensor(coordinator, device_id, description)
                 for description in DEVICE_DATA_SENSORS
@@ -239,6 +240,35 @@ class HanetFirmwareSensor(HanetEntity, SensorEntity):
         )
         return str(value) if value not in (None, "") else None
 
+
+class HanetRealtimeSensor(HanetEntity, SensorEntity):
+    """Expose the realtime event transport for diagnostics."""
+
+    _attr_translation_key = "realtime_stream"
+    _attr_icon = "mdi:access-point-network"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: HanetCoordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id, "realtime_stream")
+
+    @property
+    def native_value(self) -> str:
+        """Return the active transport: sse, polling or reconnecting."""
+        return str(getattr(self.coordinator, "event_transport", "startup"))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the latest event time and delivery latency."""
+        return {
+            **super().extra_state_attributes,
+            "last_event_at": getattr(self.coordinator, "last_event_at", None),
+            "latency_seconds": getattr(
+                self.coordinator, "last_event_latency", None
+            ),
+            "last_event_id": getattr(
+                self.coordinator, "_realtime_last_id", None
+            ),
+        }
 
 class HanetDeviceDataSensor(HanetEntity, SensorEntity):
     """Expose one camera metadata or setting value."""
