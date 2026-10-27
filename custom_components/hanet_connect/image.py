@@ -168,6 +168,7 @@ class HanetPersonImage(
 
     _attr_content_type = "image/jpeg"
     _attr_icon = "mdi:face-recognition"
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self, coordinator: HanetCoordinator, person_id: str

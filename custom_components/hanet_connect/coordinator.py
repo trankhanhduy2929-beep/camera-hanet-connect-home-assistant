@@ -36,6 +36,9 @@ from .groups import group_matches
 
 _LOGGER = logging.getLogger(__name__)
 
+_EVENT_WATCH_SECONDS = 5
+_EVENT_WATCH_SSE_SECONDS = 15
+
 
 def _recent(occurred_at: Any, within_seconds: int) -> bool:
     """Return whether an ISO timestamp falls inside the last N seconds."""
@@ -234,9 +237,14 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await task
 
     async def _event_watch_loop(self) -> None:
-        """Poll recent history every 5 seconds, matching the mobile app."""
+        """Poll recent history as a safety net behind the event stream."""
         while True:
-            await asyncio.sleep(5)
+            interval = (
+                _EVENT_WATCH_SSE_SECONDS
+                if self.event_transport == "sse"
+                else _EVENT_WATCH_SECONDS
+            )
+            await asyncio.sleep(interval)
             try:
                 rows = await self.client.async_events(limit=30)
             except asyncio.CancelledError:
@@ -248,9 +256,7 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except (HanetGatewayConnectionError, HanetGatewayError) as err:
                 _LOGGER.debug("HANET event watch failed: %s", err)
                 continue
-            for item in reversed(rows):
-                if isinstance(item, Mapping):
-                    self._apply_realtime_event(item)
+            self._merge_events(rows)
 
     async def _realtime_loop(self) -> None:
         delay = 2
@@ -327,31 +333,50 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.hass.async_create_task(self.async_request_refresh())
 
     def _apply_realtime_event(self, event: Mapping[str, Any]) -> None:
-        item = dict(event)
-        key = _event_key(item)
+        """Merge one pushed event into the cached history."""
+        self._merge_events([event])
+
+    def _merge_events(self, rows: list[Mapping[str, Any]]) -> None:
+        """Merge newest-first events, writing state once per changed batch."""
+        candidates = [dict(row) for row in rows if isinstance(row, Mapping)]
+        if not candidates:
+            return
         if self._known_events is None:
             self._known_events = {_event_key(row) for row in self.events}
-        is_new = key not in self._known_events
-        self._known_events.add(key)
+        ordered: list[dict[str, Any]] = []
+        fresh: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in candidates:
+            key = _event_key(item)
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(item)
+            if key not in self._known_events:
+                self._known_events.add(key)
+                fresh.append(item)
+        if not fresh:
+            return
         events = [
-            item,
-            *(row for row in self.events if _event_key(row) != key),
+            *ordered,
+            *(row for row in self.events if _event_key(row) not in seen),
         ][:250]
         data = dict(self.data) if isinstance(self.data, Mapping) else {}
         data["events"] = events
         data.setdefault("devices", self.devices)
         self.data = data
         self.last_update_success = True
-        self.last_event_at = str(item.get("occurred_at") or "")
+        self.last_event_at = str(ordered[0].get("occurred_at") or "")
         self.last_event_latency = _event_age(self.last_event_at)
+        if len(self._known_events) > 2000:
+            self._known_events = {_event_key(row) for row in events}
         self.async_update_listeners()
-        if not is_new:
-            return
-        self.hass.bus.async_fire(
-            EVENT_TYPE,
-            {"config_entry_id": self.entry.entry_id, **item},
-        )
-        self._notify(item)
+        for item in reversed(fresh):
+            self.hass.bus.async_fire(
+                EVENT_TYPE,
+                {"config_entry_id": self.entry.entry_id, **item},
+            )
+            self._notify(item)
 
     def _notify(self, event: Mapping[str, Any]) -> None:
         kind = str(event.get("kind") or "").casefold()
