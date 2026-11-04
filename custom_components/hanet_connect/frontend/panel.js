@@ -1,3 +1,5 @@
+import { PANEL_CSS } from "./panel.css.js";
+
 const TABS = [
   ["cameras", "Camera", "mdi:cctv"],
   ["events", "Sự kiện", "mdi:bell-ring-outline"],
@@ -224,9 +226,32 @@ class HanetConnectPanel extends HTMLElement {
     if (!this._data && !this._loading) this.load();
   }
 
+  applyPanelStyles() {
+    let applied = false;
+    try {
+      if (
+        "adoptedStyleSheets" in this.shadowRoot
+        && typeof CSSStyleSheet !== "undefined"
+        && "replaceSync" in CSSStyleSheet.prototype
+      ) {
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync(PANEL_CSS);
+        this.shadowRoot.adoptedStyleSheets = [sheet];
+        applied = true;
+      }
+    } catch (error) {
+      applied = false;
+    }
+    if (applied) return;
+    if (this.shadowRoot.querySelector("style[data-panel-css]")) return;
+    const style = document.createElement("style");
+    style.dataset.panelCss = "";
+    style.textContent = PANEL_CSS;
+    this.shadowRoot.prepend(style);
+  }
+
   connectedCallback() {
     this.shadowRoot.innerHTML = `
-      <link rel="stylesheet" href="/hanet_connect_static/panel.css">
       <div class="hc-app">
         <header class="hc-topbar">
           <div class="hc-brand">
@@ -251,6 +276,7 @@ class HanetConnectPanel extends HTMLElement {
       <dialog id="dialog" aria-modal="true"></dialog>
       <div id="toast" class="hc-toast" role="status" aria-live="polite" hidden></div>
     `;
+    this.applyPanelStyles();
     this._tabs = this.shadowRoot.getElementById("tabs");
     this._content = this.shadowRoot.getElementById("content");
     this._subtitle = this.shadowRoot.getElementById("subtitle");

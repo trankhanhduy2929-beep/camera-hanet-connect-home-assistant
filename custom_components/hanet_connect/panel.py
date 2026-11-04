@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -15,6 +15,7 @@ import voluptuous as vol
 from aiohttp import web
 from homeassistant.components import frontend, websocket_api
 from homeassistant.components.http import HomeAssistantView, StaticPathConfig
+from homeassistant.components.http.auth import async_sign_path
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -115,6 +116,8 @@ _RECORDINGS_SCHEMA = {
 
 _CLIP_CACHE_TTL = 30
 _CLIP_CACHE: dict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = {}
+_EVENT_MEDIA_TTL = 3600
+_EVENT_MEDIA_CACHE: dict[str, tuple[float, str]] = {}
 
 async def async_register_panel(hass: HomeAssistant) -> None:
     """Register the sidebar panel, websocket API and media views once."""
@@ -171,7 +174,7 @@ def _entry_for_msg(hass: HomeAssistant, msg: dict[str, Any]) -> Any:
             if entry.entry_id == wanted:
                 return entry
         return None
-    return loaded[0] if len(loaded) == 1 else None
+    return loaded[0] if loaded else None
 
 def _error(
     connection: websocket_api.ActiveConnection,
@@ -179,6 +182,19 @@ def _error(
     message: str,
 ) -> None:
     connection.send_error(msg["id"], "not_found", message)
+
+def _remember_event_images(events: list[dict[str, Any]]) -> None:
+    now = time.monotonic()
+    for event in events:
+        image_url = str(event.get("image_url") or "")
+        identity = _event_identity(event)
+        if identity and image_url:
+            _EVENT_MEDIA_CACHE[identity] = (now, image_url)
+    if len(_EVENT_MEDIA_CACHE) > 2000:
+        cutoff = now - _EVENT_MEDIA_TTL
+        for key, (stamp, _) in list(_EVENT_MEDIA_CACHE.items()):
+            if stamp < cutoff:
+                _EVENT_MEDIA_CACHE.pop(key, None)
 
 def _item_key(value: str) -> str:
     """Encode an opaque item id so it is safe in one URL path segment."""
@@ -192,8 +208,28 @@ def _decode_item_key(value: str) -> str:
         return value
 
 
-def _event_item(event: dict[str, Any]) -> dict[str, Any]:
+def _media_signer(hass: HomeAssistant, connection: Any) -> Any:
+    """Build a signer for image and clip URLs on one websocket connection."""
+    refresh_token_id = getattr(connection, "refresh_token_id", None)
+
+    def sign(path: str) -> str:
+        if not path:
+            return ""
+        return async_sign_path(
+            hass,
+            path,
+            timedelta(hours=1),
+            refresh_token_id=refresh_token_id,
+        )
+
+    return sign
+
+def _event_item(
+    event: dict[str, Any], sign: Any = None
+) -> dict[str, Any]:
     event_id = str(event.get("id") or "")
+    image_key = _item_key(event_id or _event_identity(event)) if event.get("image_url") else ""
+    image = f"{MEDIA_URL}/event/{image_key}" if image_key else ""
     return {
         "id": event_id,
         "kind": event.get("kind"),
@@ -211,11 +247,11 @@ def _event_item(event: dict[str, Any]) -> dict[str, Any]:
         "occurred_at": event.get("occurred_at"),
         "received_at": event.get("received_at"),
         "has_image": bool(event.get("image_url")),
-        "image": f"{MEDIA_URL}/event/{_item_key(event_id)}" if event_id else "",
+        "image": sign(image) if sign else image,
     }
 
 
-def _person_item(person: dict[str, Any]) -> dict[str, Any]:
+def _person_item(person: dict[str, Any], sign: Any = None) -> dict[str, Any]:
     person_id = str(person.get("id") or "")
     return {
         "id": person_id,
@@ -233,11 +269,17 @@ def _person_item(person: dict[str, Any]) -> dict[str, Any]:
         "alias_id": person.get("alias_id"),
         "enabled": person.get("enabled", True),
         "has_image": bool(person.get("image_url")),
-        "image": f"{MEDIA_URL}/person/{_item_key(person_id)}" if person_id else "",
+        "image": (
+            sign(f"{MEDIA_URL}/person/{_item_key(person_id)}")
+            if sign and person_id
+            else f"{MEDIA_URL}/person/{_item_key(person_id)}" if person_id else ""
+        ),
     }
 
 
-def _clip_item(clip: dict[str, Any], day: str) -> dict[str, Any]:
+def _clip_item(
+    clip: dict[str, Any], day: str, sign: Any = None
+) -> dict[str, Any]:
     device_id = str(clip.get("device_id") or "")
     file_path = str(clip.get("file") or "")
     files = {"device_id": device_id, "file": file_path, "day": day}
@@ -258,13 +300,18 @@ def _clip_item(clip: dict[str, Any], day: str) -> dict[str, Any]:
         "duration": clip.get("duration"),
         "day": day,
         "source": "cloud",
-        "thumbnail": thumbnail,
-        "playback": playback,
-        "download": f"{playback}&download=1" if playback else "",
+        "thumbnail": sign(thumbnail) if sign else thumbnail,
+        "playback": sign(playback) if sign else playback,
+        "download": (
+            sign(f"{playback}&download=1") if sign and playback
+            else f"{playback}&download=1" if playback else ""
+        ),
         "has_file": bool(file_path),
     }
 
-def _snapshot(hass: HomeAssistant, entry: Any) -> dict[str, Any]:
+def _snapshot(
+    hass: HomeAssistant, entry: Any, sign: Any = None
+) -> dict[str, Any]:
     coordinator = entry.runtime_data.coordinator
     options = entry.options
     registry = er.async_get(hass)
@@ -294,7 +341,7 @@ def _snapshot(hass: HomeAssistant, entry: Any) -> dict[str, Any]:
                 "camera_entity": cameras_for[0] if cameras_for else "",
             }
         )
-    people = [_person_item(item) for item in coordinator.people]
+    people = [_person_item(item, sign) for item in coordinator.people]
     places: dict[str, str] = {}
     for device in devices:
         if device["place_id"]:
@@ -319,7 +366,7 @@ def _snapshot(hass: HomeAssistant, entry: Any) -> dict[str, Any]:
             {"id": place_id, "name": name}
             for place_id, name in sorted(places.items(), key=lambda item: item[1])
         ],
-        "events": [_event_item(item) for item in coordinator.events],
+        "events": [_event_item(item, sign) for item in coordinator.events],
         "people": people,
         "departments": [
             {
@@ -357,7 +404,9 @@ async def websocket_state(
     if entry is None:
         _error(connection, msg, "No loaded HANET Connect entry")
         return
-    connection.send_result(msg["id"], _snapshot(hass, entry))
+    connection.send_result(
+        msg["id"], _snapshot(hass, entry, _media_signer(hass, connection))
+    )
 
 def _decode_image(value: str) -> bytes:
     encoded = value.strip()
@@ -427,7 +476,13 @@ async def websocket_face_create(
     except Exception as err:  # noqa: BLE001
         connection.send_error(msg["id"], "face_create_failed", str(err))
         return
-    connection.send_result(msg["id"], {"result": result, "snapshot": _snapshot(hass, entry)})
+    connection.send_result(
+        msg["id"],
+        {
+            "result": result,
+            "snapshot": _snapshot(hass, entry, _media_signer(hass, connection)),
+        },
+    )
 
 @websocket_api.websocket_command(_FACE_UPDATE_SCHEMA)
 @websocket_api.require_admin
@@ -463,7 +518,13 @@ async def websocket_face_update(
     except Exception as err:  # noqa: BLE001
         connection.send_error(msg["id"], "face_update_failed", str(err))
         return
-    connection.send_result(msg["id"], {"result": result, "snapshot": _snapshot(hass, entry)})
+    connection.send_result(
+        msg["id"],
+        {
+            "result": result,
+            "snapshot": _snapshot(hass, entry, _media_signer(hass, connection)),
+        },
+    )
 
 @websocket_api.websocket_command(_FACE_DELETE_SCHEMA)
 @websocket_api.require_admin
@@ -491,7 +552,13 @@ async def websocket_face_delete(
     except Exception as err:  # noqa: BLE001
         connection.send_error(msg["id"], "face_delete_failed", str(err))
         return
-    connection.send_result(msg["id"], {"result": result, "snapshot": _snapshot(hass, entry)})
+    connection.send_result(
+        msg["id"],
+        {
+            "result": result,
+            "snapshot": _snapshot(hass, entry, _media_signer(hass, connection)),
+        },
+    )
 
 def _today() -> str:
     return datetime.now().astimezone().date().isoformat()
@@ -568,11 +635,14 @@ async def websocket_events(
             for event in events
             if str(event.get("device_id") or "") == device_id
         ]
+    _remember_event_images(events)
     connection.send_result(
         msg["id"],
         {
             "day": day,
-            "events": [_event_item(event) for event in events],
+            "events": [
+                _event_item(event, _media_signer(hass, connection)) for event in events
+            ],
         },
     )
 
@@ -608,7 +678,9 @@ async def websocket_recordings(
         {
             "day": day,
             "source": "cloud",
-            "clips": [_clip_item(clip, day) for clip in clips],
+            "clips": [
+                _clip_item(clip, day, _media_signer(hass, connection)) for clip in clips
+            ],
         },
     )
 
@@ -651,7 +723,9 @@ async def websocket_refresh(
         _error(connection, msg, "No loaded HANET Connect entry")
         return
     await entry.runtime_data.coordinator.async_request_refresh()
-    connection.send_result(msg["id"], _snapshot(hass, entry))
+    connection.send_result(
+        msg["id"], _snapshot(hass, entry, _media_signer(hass, connection))
+    )
 
 def _admin_request(request: web.Request) -> bool:
     user = request.get("hass_user")
@@ -687,15 +761,20 @@ class HanetMediaView(HomeAssistantView):
         for candidate in _loaded_entries(self.hass):
             coordinator = candidate.runtime_data.coordinator
             if kind == "event":
-                item = next(
-                    (
-                        row
-                        for row in coordinator.events
-                        if str(row.get("id") or "") == wanted
-                    ),
-                    None,
-                )
-                image_url = item.get("image_url") if item else None
+                cached = _EVENT_MEDIA_CACHE.get(wanted)
+                if cached and time.monotonic() - cached[0] < _EVENT_MEDIA_TTL:
+                    image_url = cached[1]
+                else:
+                    item = next(
+                        (
+                            row
+                            for row in coordinator.events
+                            if str(row.get("id") or "") == wanted
+                            or _event_identity(row) == wanted
+                        ),
+                        None,
+                    )
+                    image_url = item.get("image_url") if item else None
             elif kind == "person":
                 person = next(
                     (
