@@ -30,71 +30,59 @@ PANEL_STATIC = "/hanet_connect_static"
 MEDIA_URL = "/api/hanet_connect/media"
 MAX_FACE_BYTES = 6 * 1024 * 1024
 
-_STATE_SCHEMA = vol.Schema(
-    {
-        vol.Required("type"): "hanet_connect/panel/state",
-        vol.Optional("entry_id"): str,
-    }
-)
-_FACE_CREATE_SCHEMA = vol.Schema(
-    {
-        vol.Required("type"): "hanet_connect/panel/face_create",
-        vol.Optional("entry_id"): str,
-        vol.Required("place_id"): str,
-        vol.Required("name"): str,
-        vol.Required("image"): str,
-        vol.Optional("filename", default="face.jpg"): str,
-        vol.Optional("person_type", default=0): vol.All(
-            vol.Coerce(int), vol.In((0, 1))
-        ),
-        vol.Optional("department_id", default=""): str,
-        vol.Optional("alias_id", default=""): str,
-    }
-)
-_FACE_UPDATE_SCHEMA = vol.Schema(
-    {
-        vol.Required("type"): "hanet_connect/panel/face_update",
-        vol.Optional("entry_id"): str,
-        vol.Required("person_id"): str,
-        vol.Optional("place_id"): str,
-        vol.Optional("name"): str,
-        vol.Optional("image"): str,
-        vol.Optional("filename", default="face.jpg"): str,
-        vol.Optional("person_type"): vol.All(
-            vol.Coerce(int), vol.In((0, 1))
-        ),
-        vol.Optional("department_id"): str,
-        vol.Optional("alias_id"): str,
-    }
-)
-_FACE_DELETE_SCHEMA = vol.Schema(
-    {
-        vol.Required("type"): "hanet_connect/panel/face_delete",
-        vol.Optional("entry_id"): str,
-        vol.Required("person_id"): str,
-        vol.Optional("place_id"): str,
-    }
-)
-_SETTINGS_SCHEMA = vol.Schema(
-    {
-        vol.Required("type"): "hanet_connect/panel/settings",
-        vol.Optional("entry_id"): str,
-        vol.Optional(CONF_NOTIFY_SERVICE): str,
-        vol.Optional(CONF_NOTIFY_PERSISTENT): bool,
-        **{
-            vol.Optional(f"recency_{group}"): vol.All(
-                vol.Coerce(int), vol.Range(min=1, max=3600)
-            )
-            for group in ADJUSTABLE_GROUPS
-        },
-    }
-)
-_REFRESH_SCHEMA = vol.Schema(
-    {
-        vol.Required("type"): "hanet_connect/panel/refresh",
-        vol.Optional("entry_id"): str,
-    }
-)
+_STATE_SCHEMA = {
+    "type": "hanet_connect/panel/state",
+    vol.Optional("entry_id"): str,
+}
+_FACE_CREATE_SCHEMA = {
+    "type": "hanet_connect/panel/face_create",
+    vol.Optional("entry_id"): str,
+    vol.Required("place_id"): str,
+    vol.Required("name"): str,
+    vol.Required("image"): str,
+    vol.Optional("filename", default="face.jpg"): str,
+    vol.Optional("person_type", default=0): vol.All(
+        vol.Coerce(int), vol.In((0, 1))
+    ),
+    vol.Optional("department_id", default=""): str,
+    vol.Optional("alias_id", default=""): str,
+}
+_FACE_UPDATE_SCHEMA = {
+    "type": "hanet_connect/panel/face_update",
+    vol.Optional("entry_id"): str,
+    vol.Required("person_id"): str,
+    vol.Optional("place_id"): str,
+    vol.Optional("name"): str,
+    vol.Optional("image"): str,
+    vol.Optional("filename", default="face.jpg"): str,
+    vol.Optional("person_type"): vol.All(
+        vol.Coerce(int), vol.In((0, 1))
+    ),
+    vol.Optional("department_id"): str,
+    vol.Optional("alias_id"): str,
+}
+_FACE_DELETE_SCHEMA = {
+    "type": "hanet_connect/panel/face_delete",
+    vol.Optional("entry_id"): str,
+    vol.Required("person_id"): str,
+    vol.Optional("place_id"): str,
+}
+_SETTINGS_SCHEMA = {
+    "type": "hanet_connect/panel/settings",
+    vol.Optional("entry_id"): str,
+    vol.Optional(CONF_NOTIFY_SERVICE): str,
+    vol.Optional(CONF_NOTIFY_PERSISTENT): bool,
+    **{
+        vol.Optional(f"recency_{group}"): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=3600)
+        )
+        for group in ADJUSTABLE_GROUPS
+    },
+}
+_REFRESH_SCHEMA = {
+    "type": "hanet_connect/panel/refresh",
+    vol.Optional("entry_id"): str,
+}
 
 async def async_register_panel(hass: HomeAssistant) -> None:
     """Register the sidebar panel, websocket API and media view once."""
