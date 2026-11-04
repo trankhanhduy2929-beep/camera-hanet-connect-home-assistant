@@ -35,6 +35,56 @@ const SOURCE_LABELS = {
   polling: "Polling",
 };
 
+const COMMAND_LABELS = {
+  open_door: "Mở cửa",
+  close_door: "Đóng cửa",
+  alarm: "Bật còi",
+  stop_alarm: "Tắt còi",
+  up: "Lên",
+  down: "Xuống",
+  left: "Trái",
+  right: "Phải",
+  leftUp: "Lên trái",
+  rightUp: "Lên phải",
+  leftDown: "Xuống trái",
+  rightDown: "Xuống phải",
+  zoomIn: "Phóng to",
+  zoomOut: "Thu nhỏ",
+  autoScan: "Quét tự động",
+  stop: "Dừng",
+  presetSet: "Lưu vị trí",
+  presetGo: "Đến vị trí",
+};
+
+const HOLD_COMMANDS = new Set([
+  "up", "down", "left", "right",
+  "leftUp", "rightUp", "leftDown", "rightDown",
+  "zoomIn", "zoomOut",
+]);
+
+const PTZ_PAD = [
+  ["leftUp", "mdi:arrow-top-left"], ["up", "mdi:arrow-up"], ["rightUp", "mdi:arrow-top-right"],
+  ["left", "mdi:arrow-left"], ["stop", "mdi:stop"], ["right", "mdi:arrow-right"],
+  ["leftDown", "mdi:arrow-bottom-left"], ["down", "mdi:arrow-down"], ["rightDown", "mdi:arrow-bottom-right"],
+];
+
+const SETTING_GROUP_ORDER = [
+  "Hình ảnh & âm thanh",
+  "Nhận diện",
+  "Ghi hình & cảnh báo",
+  "Thông báo",
+  "PTZ",
+  "Khác",
+];
+
+const commandLabel = (command) => COMMAND_LABELS[command] || command;
+
+const truthy = (value) => (
+  value === true
+  || value === 1
+  || ["1", "true", "yes", "on", "enabled", "active"].includes(String(value ?? "").toLocaleLowerCase())
+);
+
 const esc = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -288,6 +338,13 @@ class HanetConnectPanel extends HTMLElement {
     this.shadowRoot.addEventListener("change", (event) => this.onChange(event));
     this.shadowRoot.addEventListener("submit", (event) => this.onSubmit(event));
     this.shadowRoot.addEventListener("keydown", (event) => this.onCardKeydown(event));
+    this.shadowRoot.addEventListener("pointerdown", (event) => this.onPointerDown(event));
+    this.shadowRoot.addEventListener("pointerup", (event) => this.onPointerUp(event));
+    this.shadowRoot.addEventListener("pointercancel", (event) => this.onPointerUp(event));
+    this.shadowRoot.addEventListener("pointerleave", (event) => this.onPointerUp(event));
+    this._onDocumentPointerUp = () => this.onPointerUp();
+    document.addEventListener("pointerup", this._onDocumentPointerUp);
+    document.addEventListener("pointercancel", this._onDocumentPointerUp);
     this._tabs.addEventListener("keydown", (event) => this.onTabKeydown(event));
     this._dialog.addEventListener("click", (event) => {
       if (event.target === this._dialog) this._dialog.close();
@@ -303,6 +360,11 @@ class HanetConnectPanel extends HTMLElement {
     if (this._timer) window.clearInterval(this._timer);
     this._timer = null;
     window.clearTimeout(this._toastTimer);
+    if (this._onDocumentPointerUp) {
+      document.removeEventListener("pointerup", this._onDocumentPointerUp);
+      document.removeEventListener("pointercancel", this._onDocumentPointerUp);
+      this._onDocumentPointerUp = null;
+    }
   }
 
   async autoLoad() {
@@ -558,12 +620,24 @@ class HanetConnectPanel extends HTMLElement {
             <span><ha-icon icon="mdi:information-outline"></ha-icon>${event ? esc(kindLabel(event)) : "Chưa có sự kiện"}</span>
             <span><ha-icon icon="mdi:chip"></ha-icon>${esc(device.firmware || "N/A")}</span>
           </div>
+          <div class="hc-camera-quick" role="group" aria-label="Điều khiển nhanh ${esc(device.name || "camera")}">
+            <button class="hc-icon-button is-small" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="open_door" title="Mở cửa" aria-label="Mở cửa"><ha-icon icon="mdi:door-open"></ha-icon></button>
+            <button class="hc-icon-button is-small" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="close_door" title="Đóng cửa" aria-label="Đóng cửa"><ha-icon icon="mdi:door-closed"></ha-icon></button>
+            <button class="hc-icon-button is-small" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="alarm" title="Bật còi" aria-label="Bật còi"><ha-icon icon="mdi:alarm-light"></ha-icon></button>
+            <button class="hc-icon-button is-small" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="stop_alarm" title="Tắt còi" aria-label="Tắt còi"><ha-icon icon="mdi:alarm-light-off"></ha-icon></button>
+          </div>
           <div class="hc-camera-actions">
             <button class="hc-secondary-button" type="button" data-action="camera-events" data-device="${esc(device.id)}">
               <ha-icon icon="mdi:history"></ha-icon><span>Sự kiện</span>
             </button>
             <button class="hc-secondary-button" type="button" data-action="camera-recordings" data-device="${esc(device.id)}">
               <ha-icon icon="mdi:filmstrip"></ha-icon><span>Ghi hình</span>
+            </button>
+            <button class="hc-secondary-button" type="button" data-action="camera-controls" data-device="${esc(device.id)}">
+              <ha-icon icon="mdi:gamepad-variant-outline"></ha-icon><span>Điều khiển</span>
+            </button>
+            <button class="hc-secondary-button" type="button" data-action="camera-settings" data-device="${esc(device.id)}">
+              <ha-icon icon="mdi:cog-outline"></ha-icon><span>Cài đặt</span>
             </button>
           </div>
         </div>
@@ -834,6 +908,7 @@ class HanetConnectPanel extends HTMLElement {
             <p>Thời gian giữ trạng thái, thông báo và thông tin kết nối HANET.</p>
           </div>
         </div>
+        ${this.deviceSettingsMarkup()}
         <div class="hc-settings-grid">
           <form class="hc-settings-card" data-form="settings">
             <div class="hc-settings-heading">
@@ -955,6 +1030,14 @@ class HanetConnectPanel extends HTMLElement {
       this._recordings.clips = [];
       this._recordings.loaded = false;
       this.openTab("recordings", true);
+    } else if (action === "camera-controls") {
+      this.openCameraControls(target.dataset.device);
+    } else if (action === "camera-settings") {
+      this.openCameraSettings(target.dataset.device);
+    } else if (action === "camera-command") {
+      if (target.hasAttribute("data-hold")) return;
+      const device = this.deviceById(target.dataset.device);
+      if (device) this.runCameraCommand(device, target.dataset.command, target);
     } else if (action === "clip") {
       this.openClipDialog(target.dataset.id);
     } else if (action === "event-recordings") {
@@ -1055,6 +1138,11 @@ class HanetConnectPanel extends HTMLElement {
   }
 
   onChange(event) {
+    const setting = event.target.closest("[data-setting-key]");
+    if (setting) {
+      this.applySetting(setting);
+      return;
+    }
     const dayInput = event.target.closest("[data-day]");
     if (dayInput) {
       this.setDay(dayInput.dataset.day, dayInput.value);
@@ -1192,12 +1280,220 @@ class HanetConnectPanel extends HTMLElement {
           <div><span>Sự kiện cuối</span><strong>${event ? esc(`${kindLabel(event)} · ${relative(event.occurred_at)}`) : "Chưa có"}</strong></div>
         </div>
         <div class="hc-dialog-actions">
+          <button class="hc-secondary-button" type="button" data-action="camera-controls" data-device="${esc(device.id)}"><ha-icon icon="mdi:gamepad-variant-outline"></ha-icon><span>Điều khiển</span></button>
+          <button class="hc-secondary-button" type="button" data-action="camera-settings" data-device="${esc(device.id)}"><ha-icon icon="mdi:cog-outline"></ha-icon><span>Cài đặt</span></button>
           <button class="hc-secondary-button" type="button" data-action="camera-events" data-device="${esc(device.id)}">Sự kiện</button>
           <button class="hc-primary-button" type="button" data-action="camera-recordings" data-device="${esc(device.id)}">Ghi hình</button>
         </div>
       </div>`;
     this.attachImageFallbacks();
     this._dialog.showModal();
+  }
+
+  deviceById(deviceId) {
+    return (this._data?.devices || []).find((item) => String(item.id) === String(deviceId)) || null;
+  }
+
+  openCameraControls(deviceId) {
+    const device = this.deviceById(deviceId);
+    if (!device) return;
+    const pad = PTZ_PAD.map(([command, icon]) => `
+      <button class="hc-ptz-button${command === "stop" ? " is-stop" : ""}" type="button"
+        data-action="camera-command" data-device="${esc(device.id)}" data-command="${command}"
+        ${HOLD_COMMANDS.has(command) ? "data-hold" : ""} aria-label="${esc(commandLabel(command))}" title="${esc(commandLabel(command))}">
+        <ha-icon icon="${icon}"></ha-icon>
+      </button>`).join("");
+    this._dialog.innerHTML = `
+      <div class="hc-dialog-head">
+        <div><span class="hc-eyebrow">Điều khiển</span><h2>${esc(device.name || "Camera")}</h2></div>
+        <button class="hc-icon-button" type="button" data-action="close-dialog" aria-label="Đóng"><ha-icon icon="mdi:close"></ha-icon></button>
+      </div>
+      <div class="hc-dialog-body">
+        <div class="hc-control-grid">
+          <section class="hc-control-section">
+            <h3>Hướng &amp; thu phóng</h3>
+            <div class="hc-ptz-layout">
+              <div class="hc-ptz-pad">${pad}</div>
+              <div class="hc-control-buttons is-stack">
+                <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="zoomIn" data-hold><ha-icon icon="mdi:magnify-plus-outline"></ha-icon><span>Phóng to</span></button>
+                <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="zoomOut" data-hold><ha-icon icon="mdi:magnify-minus-outline"></ha-icon><span>Thu nhỏ</span></button>
+                <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="autoScan"><ha-icon icon="mdi:pan-horizontal"></ha-icon><span>Quét tự động</span></button>
+              </div>
+            </div>
+            <p class="hc-control-note">Giữ nút hướng hoặc thu phóng để di chuyển liên tục, thả ra để dừng.</p>
+          </section>
+          <section class="hc-control-section">
+            <h3>Cửa &amp; cảnh báo</h3>
+            <div class="hc-control-buttons">
+              <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="open_door"><ha-icon icon="mdi:door-open"></ha-icon><span>Mở cửa</span></button>
+              <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="close_door"><ha-icon icon="mdi:door-closed"></ha-icon><span>Đóng cửa</span></button>
+              <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="alarm"><ha-icon icon="mdi:alarm-light"></ha-icon><span>Bật còi</span></button>
+              <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="stop_alarm"><ha-icon icon="mdi:alarm-light-off"></ha-icon><span>Tắt còi</span></button>
+            </div>
+          </section>
+        </div>
+        <div class="hc-dialog-actions">
+          <button class="hc-secondary-button" type="button" data-action="camera-settings" data-device="${esc(device.id)}"><ha-icon icon="mdi:cog-outline"></ha-icon><span>Cài đặt camera</span></button>
+          <button class="hc-secondary-button" type="button" data-action="close-dialog">Đóng</button>
+        </div>
+      </div>`;
+    this._dialog.showModal();
+  }
+
+  settingControl(deviceId, setting) {
+    const common = `data-setting-key="${esc(setting.key)}" data-device="${esc(deviceId)}" data-setting-current="${esc(JSON.stringify(setting.value ?? ""))}"`;
+    const value = setting.value;
+    if (setting.kind === "boolean") {
+      return `<input type="checkbox" role="switch" ${common} ${truthy(value) ? "checked" : ""} aria-label="${esc(setting.label)}">`;
+    }
+    if (setting.kind === "select") {
+      const options = setting.options || [];
+      const current = String(value ?? "");
+      const rendered = options.map((option) => {
+        const optionValue = String(option.value);
+        return `<option value="${esc(optionValue)}" ${optionValue === current ? "selected" : ""}>${esc(option.label)}</option>`;
+      }).join("");
+      const missing = current && !options.some((option) => String(option.value) === current)
+        ? `<option value="${esc(current)}" selected>${esc(current)}</option>`
+        : "";
+      return `<select ${common} aria-label="${esc(setting.label)}">${missing}${rendered}</select>`;
+    }
+    if (setting.kind === "number") {
+      const step = Number.isInteger(Number(value)) ? "1" : "0.1";
+      return `<input type="number" ${common} step="${step}" value="${esc(value ?? 0)}" aria-label="${esc(setting.label)}">`;
+    }
+    return `<input type="text" ${common} value="${esc(value ?? "")}" aria-label="${esc(setting.label)}">`;
+  }
+
+  settingsMarkup(device) {
+    const settings = device.settings || [];
+    if (!settings.length) {
+      return `<div class="hc-empty-state is-compact"><ha-icon icon="mdi:tune-variant"></ha-icon><strong>Không có thông số có thể ghi</strong><span>Camera này không trả về cài đặt được hỗ trợ.</span></div>`;
+    }
+    return `<div class="hc-setting-groups">
+      ${SETTING_GROUP_ORDER.map((group) => {
+        const rows = settings.filter((setting) => setting.group === group);
+        if (!rows.length) return "";
+        return `<section class="hc-setting-group">
+          <h4>${esc(group)}</h4>
+          <div class="hc-setting-list">
+            ${rows.map((setting) => `<label class="hc-setting-row">
+              <span>${esc(setting.label)}</span>
+              ${this.settingControl(device.id, setting)}
+            </label>`).join("")}
+          </div>
+        </section>`;
+      }).join("")}
+    </div>`;
+  }
+
+  deviceSettingsMarkup() {
+    const devices = (this._data?.devices || []).filter((device) => (device.settings || []).length);
+    if (!devices.length) return "";
+    return `<div class="hc-section-heading">
+      <div><h3>Cài đặt thiết bị</h3><p>Chỉnh trực tiếp thông số camera qua HANET cloud.</p></div>
+    </div>
+    <div class="hc-device-settings">
+      ${devices.map((device) => `<article class="hc-device-settings-row">
+        <div class="hc-device-settings-info">
+          <strong>${esc(device.name || device.id)}</strong>
+          <span>${esc(device.place_name || "Chưa rõ địa điểm")} · ${(device.settings || []).length} thông số</span>
+        </div>
+        <div class="hc-device-settings-actions">
+          <button class="hc-secondary-button" type="button" data-action="camera-controls" data-device="${esc(device.id)}"><ha-icon icon="mdi:gamepad-variant-outline"></ha-icon><span>Điều khiển</span></button>
+          <button class="hc-secondary-button" type="button" data-action="camera-settings" data-device="${esc(device.id)}"><ha-icon icon="mdi:cog-outline"></ha-icon><span>Cài đặt</span></button>
+        </div>
+      </article>`).join("")}
+    </div>`;
+  }
+
+  openCameraSettings(deviceId) {
+    const device = this.deviceById(deviceId);
+    if (!device) return;
+    this._dialog.innerHTML = `
+      <div class="hc-dialog-head">
+        <div><span class="hc-eyebrow">Cài đặt camera</span><h2>${esc(device.name || "Camera")}</h2></div>
+        <button class="hc-icon-button" type="button" data-action="close-dialog" aria-label="Đóng"><ha-icon icon="mdi:close"></ha-icon></button>
+      </div>
+      <div class="hc-dialog-body">
+        ${this.settingsMarkup(device)}
+        <div class="hc-dialog-actions">
+          <button class="hc-secondary-button" type="button" data-action="camera-controls" data-device="${esc(device.id)}"><ha-icon icon="mdi:gamepad-variant-outline"></ha-icon><span>Điều khiển</span></button>
+          <button class="hc-secondary-button" type="button" data-action="close-dialog">Đóng</button>
+        </div>
+      </div>`;
+    this._dialog.showModal();
+  }
+
+  async runCameraCommand(device, command, button = null, hold = false) {
+    if (button) button.disabled = true;
+    try {
+      await this._hass.callWS({
+        type: "hanet_connect/panel/command",
+        device_id: device.id,
+        command,
+      });
+      if (!hold) this.toast(`${commandLabel(command)} · ${device.name || "Camera"}`);
+    } catch (error) {
+      this.toast(this.wsError(error), true);
+    } finally {
+      if (button && command !== "stop") button.disabled = false;
+    }
+  }
+
+  onPointerDown(event) {
+    const button = event.target.closest("[data-hold]");
+    if (!button || button.disabled) return;
+    event.preventDefault();
+    const device = this.deviceById(button.dataset.device);
+    if (!device) return;
+    this._holdCommand = { device, command: button.dataset.command };
+    this.runCameraCommand(device, button.dataset.command, button, true);
+  }
+
+  onPointerUp() {
+    if (!this._holdCommand) return;
+    const { device } = this._holdCommand;
+    this._holdCommand = null;
+    this.runCameraCommand(device, "stop");
+  }
+
+  async applySetting(input) {
+    const deviceId = input.dataset.device;
+    const setting = input.dataset.settingKey;
+    const device = this.deviceById(deviceId);
+    const row = (device?.settings || []).find((item) => item.key === setting);
+    const value = input.type === "checkbox" ? input.checked
+      : input.type === "number" ? Number(input.value) : input.value;
+    const previous = input.dataset.settingCurrent;
+    input.disabled = true;
+    try {
+      const response = await this._hass.callWS({
+        type: "hanet_connect/panel/setting",
+        device_id: deviceId,
+        setting,
+        value,
+      });
+      this._data = response.snapshot || this._data;
+      input.dataset.settingCurrent = JSON.stringify(value);
+      this.toast(`${row?.label || setting} đã cập nhật`);
+    } catch (error) {
+      this.restoreSettingInput(input, previous);
+      this.toast(this.wsError(error), true);
+    } finally {
+      input.disabled = false;
+    }
+  }
+
+  restoreSettingInput(input, previous) {
+    let value = previous;
+    try {
+      value = JSON.parse(previous);
+    } catch (error) {
+      value = previous;
+    }
+    if (input.type === "checkbox") input.checked = truthy(value);
+    else input.value = String(value ?? "");
   }
 
   async openRecordingsForEvent(eventId) {
@@ -1331,8 +1627,8 @@ class HanetConnectPanel extends HTMLElement {
             <label class="hc-field">
               <span>Giới tính</span>
               <select name="sex">
-                <option value="0" ${Number(person?.sex) === 0 ? "selected" : ""}>Chưa rõ</option>
-                <option value="1" ${Number(person?.sex) === 1 ? "selected" : ""}>Nam/Nữ theo HANET</option>
+                <option value="0" ${Number(person?.sex) !== 1 ? "selected" : ""}>Nam</option>
+                <option value="1" ${Number(person?.sex) === 1 ? "selected" : ""}>Nữ</option>
               </select>
             </label>
             <label class="hc-field">

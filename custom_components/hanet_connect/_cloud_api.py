@@ -46,7 +46,27 @@ _NUMERIC_IDENTIFIER_KEYS = {
     "userid",
     "userids",
 }
-
+_PLURAL_IDENTIFIER_KEYS = {
+    key for key in _NUMERIC_IDENTIFIER_KEYS if key.endswith("ids")
+}
+_NUMERIC_ENUM_KEYS = {
+    "customertype",
+    "persontype",
+    "type",
+}
+_TYPE_SENSITIVE_IDENTIFIER_ENDPOINTS = {
+    "device_set_alert",
+    "person_get",
+    "person_delete",
+    "person_update",
+    "department_list",
+    "department_create",
+    "department_update",
+    "department_delete",
+    "department_person_list",
+    "department_person_add",
+    "department_person_remove",
+}
 
 class HanetApiClient:
     """HANET cloud session with persistent token refresh."""
@@ -356,7 +376,8 @@ class HanetApiClient:
         spec = ENDPOINTS.get(endpoint_name)
         if spec is None:
             raise HanetConfigurationError(f"Unknown HANET endpoint: {endpoint_name}")
-        payload = _normalize_identifier_payload(payload)
+        if endpoint_name not in _TYPE_SENSITIVE_IDENTIFIER_ENDPOINTS:
+            payload = _normalize_identifier_payload(payload)
         if spec.auth:
             await self.authenticate()
         last_error: HanetApiError | None = None
@@ -688,7 +709,9 @@ def _normalize_identifier_value(key: str, value: Any) -> Any:
         if canonical in _NUMERIC_IDENTIFIER_KEYS:
             return [_numeric_string_to_int(item) for item in value]
         return list(value)
-    if canonical in _NUMERIC_IDENTIFIER_KEYS:
+    if canonical in _PLURAL_IDENTIFIER_KEYS and isinstance(value, str):
+        return value
+    if canonical in _NUMERIC_IDENTIFIER_KEYS or canonical in _NUMERIC_ENUM_KEYS:
         return _numeric_string_to_int(value)
     return value
 

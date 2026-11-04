@@ -219,6 +219,9 @@ h1, h2, h3, strong { font-weight: 650; }
 .hc-camera-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-top: 12px; border-top: 1px solid var(--hc-line); color: var(--hc-muted); font-size: 0.75rem; }
 .hc-camera-meta span { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
 .hc-camera-meta ha-icon { --mdc-icon-size: 15px; }
+.hc-camera-quick { display: flex; align-items: center; gap: 6px; }
+.hc-camera-quick .hc-icon-button { color: var(--hc-muted); }
+.hc-camera-quick .hc-icon-button:hover:not(:disabled) { color: var(--hc-accent-dark); }
 .hc-camera-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .hc-camera-actions .hc-secondary-button { min-height: 38px; padding: 7px 10px; font-size: 0.82rem; }
 
@@ -306,10 +309,43 @@ h1, h2, h3, strong { font-weight: 650; }
 .hc-notice { display: flex; align-items: flex-start; gap: 10px; margin-top: 18px; padding: 12px; border-radius: 12px; color: var(--hc-muted); background: var(--hc-soft); font-size: 0.78rem; line-height: 1.5; }
 .hc-notice ha-icon { --mdc-icon-size: 18px; flex: 0 0 auto; color: var(--hc-accent); }
 
+.hc-device-settings { display: grid; gap: 10px; margin-bottom: 22px; }
+.hc-device-settings-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border: 1px solid var(--hc-line); border-radius: var(--hc-radius); background: var(--hc-surface); }
+.hc-device-settings-info { min-width: 0; }
+.hc-device-settings-info strong { display: block; font-size: 0.92rem; overflow-wrap: anywhere; }
+.hc-device-settings-info span { display: block; margin-top: 3px; color: var(--hc-muted); font-size: 0.78rem; overflow-wrap: anywhere; }
+.hc-device-settings-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+.hc-device-settings-actions .hc-secondary-button { min-height: 38px; padding: 7px 10px; font-size: 0.82rem; }
+
+.hc-control-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.hc-control-section { padding: 16px; border: 1px solid var(--hc-line); border-radius: 14px; background: var(--hc-soft); }
+.hc-control-section h3 { margin-bottom: 14px; font-size: 0.95rem; }
+.hc-control-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hc-control-buttons.is-stack { grid-template-columns: 1fr; }
+.hc-control-buttons .hc-secondary-button { min-height: 42px; justify-content: flex-start; }
+.hc-ptz-layout { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 14px; }
+.hc-ptz-pad { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 6px; }
+.hc-ptz-button { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--hc-line-strong); border-radius: 12px; color: var(--hc-ink); background: var(--hc-surface); touch-action: none; user-select: none; }
+.hc-ptz-button:hover:not(:disabled) { background: var(--hc-hover); }
+.hc-ptz-button:active:not(:disabled) { transform: scale(0.96); }
+.hc-ptz-button.is-stop { color: var(--hc-danger); background: var(--hc-danger-soft); border-color: transparent; }
+.hc-ptz-button ha-icon { --mdc-icon-size: 20px; }
+.hc-control-note { margin-top: 12px; color: var(--hc-muted); font-size: 0.76rem; }
+
+.hc-setting-groups { display: grid; gap: 18px; }
+.hc-setting-group h4 { margin-bottom: 8px; color: var(--hc-muted); font-size: 0.76rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.hc-setting-list { border: 1px solid var(--hc-line); border-radius: 14px; background: var(--hc-surface); overflow: hidden; }
+.hc-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 52px; padding: 10px 14px; border-bottom: 1px solid var(--hc-line); font-size: 0.86rem; }
+.hc-setting-row:last-child { border-bottom: 0; }
+.hc-setting-row > span { min-width: 0; overflow-wrap: anywhere; }
+.hc-setting-row input[type="text"], .hc-setting-row input[type="number"], .hc-setting-row select { width: min(220px, 46%); min-height: 38px; padding: 7px 10px; border: 1px solid var(--hc-line-strong); border-radius: 9px; color: var(--hc-ink); background: var(--hc-surface); }
+.hc-setting-row input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 auto; accent-color: var(--hc-accent); }
+
 .hc-empty-state { display: grid; place-items: center; justify-items: center; gap: 8px; padding: 46px 20px; border: 1px dashed var(--hc-line-strong); border-radius: var(--hc-radius); color: var(--hc-muted); text-align: center; }
 .hc-empty-state ha-icon { --mdc-icon-size: 34px; }
 .hc-empty-state strong { color: var(--hc-ink); }
 .hc-empty-state span { max-width: 46ch; font-size: 0.83rem; }
+.hc-empty-state.is-compact { padding: 28px 18px; }
 .hc-skeleton-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--hc-gap); }
 .hc-skeleton-card { display: grid; gap: 14px; padding: 20px; border: 1px solid var(--hc-line); border-radius: var(--hc-radius); background: var(--hc-surface); }
 .hc-skeleton { height: 13px; border-radius: 999px; background: var(--hc-soft); animation: hc-pulse 1.2s ease-in-out infinite; }
@@ -361,6 +397,10 @@ dialog::backdrop { background: rgba(8, 24, 38, 0.62); }
   .hc-event-list { grid-template-columns: 1fr; }
   .hc-person-grid { grid-template-columns: 1fr; }
   .hc-person-card { grid-template-columns: 104px minmax(0, 1fr); }
+  .hc-device-settings-row { align-items: stretch; flex-direction: column; }
+  .hc-device-settings-actions { flex-wrap: wrap; }
+  .hc-ptz-layout { grid-template-columns: 1fr; justify-items: center; }
+  .hc-control-buttons.is-stack { width: 100%; }
 }
 
 @media (max-width: 520px) {
@@ -371,6 +411,8 @@ dialog::backdrop { background: rgba(8, 24, 38, 0.62); }
   .hc-event-card { grid-template-columns: 104px minmax(0, 1fr); }
   .hc-event-image { width: 104px; min-height: 128px; }
   .hc-camera-actions { grid-template-columns: 1fr; }
+  .hc-setting-row { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .hc-setting-row input[type="text"], .hc-setting-row input[type="number"], .hc-setting-row select { width: 100%; }
   .hc-toolbar .hc-control-icon { width: 100%; }
   .hc-dialog-actions .hc-primary-button, .hc-dialog-actions .hc-secondary-button { flex: 1 1 100%; }
 }

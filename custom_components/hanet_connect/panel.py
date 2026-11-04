@@ -20,12 +20,15 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
+from ._faceid import person_face_update_fields, person_update_payload
 from .const import (
     CONF_NOTIFY_PERSISTENT,
     CONF_NOTIFY_SERVICE,
+    DEVICE_COMMANDS,
     DOMAIN,
     INTEGRATION_VERSION,
 )
+from .entity import setting_is_writable, setting_leaves
 from .groups import ADJUSTABLE_GROUPS, GROUP_LABELS, group_recency
 
 PANEL_URL = "hanet-connect"
@@ -113,6 +116,20 @@ _RECORDINGS_SCHEMA = {
     vol.Optional("device_id"): str,
     vol.Optional("source", default="cloud"): vol.In(("cloud",)),
 }
+_COMMAND_SCHEMA = {
+    "type": "hanet_connect/panel/command",
+    vol.Optional("entry_id"): str,
+    vol.Required("device_id"): str,
+    vol.Required("command"): vol.In(DEVICE_COMMANDS),
+    vol.Optional("options", default={}): dict,
+}
+_SETTING_SCHEMA = {
+    "type": "hanet_connect/panel/setting",
+    vol.Optional("entry_id"): str,
+    vol.Required("device_id"): str,
+    vol.Required("setting"): str,
+    vol.Required("value"): object,
+}
 
 _CLIP_CACHE_TTL = 30
 _CLIP_CACHE: dict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = {}
@@ -155,6 +172,8 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         websocket_face_update,
         websocket_face_delete,
         websocket_settings,
+        websocket_command,
+        websocket_setting,
         websocket_refresh,
         websocket_events,
         websocket_recordings,
@@ -309,6 +328,151 @@ def _clip_item(
         "has_file": bool(file_path),
     }
 
+_SETTING_GROUPS = (
+    (
+        "Hình ảnh & âm thanh",
+        (
+            "led",
+            "wdr",
+            "ir",
+            "reverse",
+            "rotate",
+            "audio",
+            "volume",
+            "resolution",
+            "quality",
+            "brightness",
+            "flip",
+        ),
+    ),
+    (
+        "Nhận diện",
+        (
+            "human",
+            "recognition",
+            "detection",
+            "fall",
+            "pet",
+            "distance",
+            "threshold",
+            "biopsy",
+            "tracking",
+            "face",
+        ),
+    ),
+    (
+        "Ghi hình & cảnh báo",
+        ("record", "alarm", "sound", "security", "storage", "sd", "siren", "alert"),
+    ),
+    ("Thông báo", ("notification", "notify")),
+    ("PTZ", ("ptz", "scan", "preset", "zoom")),
+)
+_SETTING_OPTIONS: dict[str, tuple[tuple[str, str], ...]] = {
+    "quality": (("480p", "480p"), ("720p", "720p"), ("1080p", "1080p"), ("1440p", "2K")),
+    "resolution": (("1", "480p"), ("2", "720p"), ("3", "1080p"), ("4", "2K")),
+    "storage": (("off", "Tắt"), ("sd", "Thẻ SD"), ("cloud", "Cloud")),
+    "recognitionarea": (
+        ("full", "Toàn khung"),
+        ("center_half", "Giữa 1/2"),
+        ("center_third", "Giữa 1/3"),
+    ),
+}
+_DESTRUCTIVE_SETTING_WORDS = (
+    "reset",
+    "reboot",
+    "restart",
+    "format",
+    "factory",
+    "upgrade",
+)
+_BOOLEAN_SETTING_WORDS = (
+    "enable",
+    "enabled",
+    "notification",
+    "record",
+    "detection",
+    "tracking",
+    "reverse",
+    "security",
+    "led",
+    "wdr",
+    "ir",
+    "mqtt",
+    "rtsp",
+    "audio",
+    "human",
+    "ptz",
+    "rotate",
+    "sound",
+    "alarm",
+)
+
+
+def _canonical(value: str) -> str:
+    return "".join(char for char in value.casefold() if char.isalnum())
+
+
+def _setting_kind(key: str, value: Any) -> str:
+    canonical = _canonical(key)
+    if canonical in _SETTING_OPTIONS:
+        return "select"
+    if isinstance(value, bool):
+        return "boolean"
+    boolean_word = str(value).strip().casefold()
+    if (
+        any(word in canonical for word in _BOOLEAN_SETTING_WORDS)
+        and boolean_word in {"0", "1", "true", "false", "on", "off"}
+    ):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, str):
+        try:
+            float(value)
+        except ValueError:
+            return "text"
+        return "number"
+    return "text"
+
+
+def _setting_group(key: str) -> str:
+    canonical = _canonical(key)
+    for label, words in _SETTING_GROUPS:
+        if any(word in canonical for word in words):
+            return label
+    return "Khác"
+
+
+def _device_settings(device: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for path, value, label in setting_leaves(device):
+        if not setting_is_writable(path):
+            continue
+        key = ".".join(path)
+        canonical = _canonical(key)
+        if canonical in seen or any(
+            word in canonical for word in _DESTRUCTIVE_SETTING_WORDS
+        ):
+            continue
+        seen.add(canonical)
+        kind = _setting_kind(key, value)
+        row: dict[str, Any] = {
+            "key": key,
+            "label": label,
+            "value": value,
+            "kind": kind,
+            "group": _setting_group(key),
+        }
+        options = _SETTING_OPTIONS.get(canonical)
+        if options:
+            row["options"] = [{"value": value, "label": text} for value, text in options]
+        rows.append(row)
+    order = {label: index for index, (label, _) in enumerate(_SETTING_GROUPS)}
+    rows.sort(key=lambda item: (order.get(item["group"], len(order)), item["label"]))
+    return rows
+
+
 def _snapshot(
     hass: HomeAssistant, entry: Any, sign: Any = None
 ) -> dict[str, Any]:
@@ -339,6 +503,7 @@ def _snapshot(
                 "place_id": device.get("place_id"),
                 "place_name": device.get("place_name"),
                 "camera_entity": cameras_for[0] if cameras_for else "",
+                "settings": _device_settings(device),
             }
         )
     people = [_person_item(item, sign) for item in coordinator.people]
@@ -497,19 +662,21 @@ async def websocket_face_update(
     if entry is None:
         _error(connection, msg, "No loaded HANET Connect entry")
         return
-    fields = {"person_id": msg["person_id"], **_face_fields(msg)}
     try:
+        payload = person_update_payload(msg)
+        result = await entry.runtime_data.client.async_call_endpoint(
+            "person_update", payload
+        )
         image_value = str(msg.get("image") or "")
         if image_value:
-            result = await entry.runtime_data.client.async_upload_face(
-                fields=fields,
+            face_fields = person_face_update_fields(msg)
+            if not face_fields.get("place_id"):
+                raise ValueError("Cần địa điểm để cập nhật ảnh FaceID")
+            await entry.runtime_data.client.async_upload_face(
+                fields=face_fields,
                 image=_decode_image(image_value),
                 filename=str(msg.get("filename") or "face.jpg"),
                 update=True,
-            )
-        else:
-            result = await entry.runtime_data.client.async_call_endpoint(
-                "person_update", fields
             )
         await _after_face_change(entry)
     except ValueError as err:
@@ -708,6 +875,61 @@ async def websocket_settings(
             options[key] = msg[key]
     hass.config_entries.async_update_entry(entry, options=options)
     connection.send_result(msg["id"], {"ok": True})
+
+@websocket_api.websocket_command(_COMMAND_SCHEMA)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_command(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Send one supported camera command."""
+    entry = _entry_for_msg(hass, msg)
+    if entry is None:
+        _error(connection, msg, "No loaded HANET Connect entry")
+        return
+    try:
+        result = await entry.runtime_data.client.async_send_command(
+            str(msg["device_id"]),
+            str(msg["command"]),
+            msg.get("options") or {},
+        )
+    except Exception as err:  # noqa: BLE001
+        connection.send_error(msg["id"], "command_failed", str(err))
+        return
+    connection.send_result(msg["id"], {"result": result})
+
+@websocket_api.websocket_command(_SETTING_SCHEMA)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_setting(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Write one camera setting and return the refreshed snapshot."""
+    entry = _entry_for_msg(hass, msg)
+    if entry is None:
+        _error(connection, msg, "No loaded HANET Connect entry")
+        return
+    try:
+        result = await entry.runtime_data.client.async_set_setting(
+            str(msg["device_id"]),
+            str(msg["setting"]),
+            msg["value"],
+        )
+        await entry.runtime_data.coordinator.async_refresh()
+    except Exception as err:  # noqa: BLE001
+        connection.send_error(msg["id"], "setting_failed", str(err))
+        return
+    connection.send_result(
+        msg["id"],
+        {
+            "result": result,
+            "snapshot": _snapshot(hass, entry, _media_signer(hass, connection)),
+        },
+    )
 
 @websocket_api.websocket_command(_REFRESH_SCHEMA)
 @websocket_api.require_admin

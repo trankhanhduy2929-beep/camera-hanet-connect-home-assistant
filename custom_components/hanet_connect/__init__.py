@@ -30,6 +30,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service import async_register_admin_service
 
+from ._faceid import person_face_update_fields, person_update_payload
 from .api import HanetGatewayClient, HanetGatewayError
 from .const import (
     CONF_API_BASE,
@@ -239,27 +240,27 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     async def faceid_update(call: ServiceCall) -> ServiceResponse:
         runtime = _runtime_for_call(hass, call)
-        fields = {
-            "person_id": call.data["person_id"],
-            **_face_fields(call.data),
-        }
         try:
+            payload = person_update_payload(call.data)
+            result = await runtime.client.async_call_endpoint(
+                "person_update",
+                payload,
+            )
             if image_path := call.data.get("image_path"):
                 path = _allowed_image_path(hass, image_path)
                 image = await hass.async_add_executor_job(path.read_bytes)
-                result = await runtime.client.async_upload_face(
-                    fields=fields,
-                    image=image,
-                    filename=path.name,
-                    update=True,
-                )
-            else:
-                result = await runtime.client.async_call_endpoint(
-                    "person_update",
-                    fields,
-                )
+                face_fields = person_face_update_fields(call.data)
+                if face_fields.get("place_id"):
+                    await runtime.client.async_upload_face(
+                        fields=face_fields,
+                        image=image,
+                        filename=path.name,
+                        update=True,
+                    )
             runtime.coordinator._metadata_refreshed_at = 0
             await runtime.coordinator.async_request_refresh()
+        except ValueError as err:
+            raise ServiceValidationError(str(err)) from err
         except HanetGatewayError as err:
             raise ServiceValidationError(str(err)) from err
         return {"result": result}
