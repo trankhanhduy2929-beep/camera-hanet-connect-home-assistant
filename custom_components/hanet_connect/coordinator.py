@@ -7,15 +7,16 @@ import contextlib
 import json
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from hashlib import sha1
 from typing import Any
 
 from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from ._errors import HanetApiError
@@ -32,7 +33,7 @@ from .const import (
     EVENT_TYPE,
     NOTIFY_KINDS,
 )
-from .groups import group_matches
+from .groups import GROUP_RECENCY_SECONDS, group_for_event, group_matches
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._metadata_refreshed_at = 0.0
         self._realtime_task: asyncio.Task[None] | None = None
         self._watch_task: asyncio.Task[None] | None = None
+        self._expiry_unsubs: dict[str, Callable[[], None]] = {}
         self._realtime_last_id: str | None = None
         self._base_interval = timedelta(seconds=scan_interval)
         self.event_transport = "starting"
@@ -230,6 +232,9 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ]
         self._realtime_task = None
         self._watch_task = None
+        for unsub in self._expiry_unsubs.values():
+            unsub()
+        self._expiry_unsubs.clear()
         for task in tasks:
             task.cancel()
         for task in tasks:
@@ -246,7 +251,7 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             await asyncio.sleep(interval)
             try:
-                rows = await self.client.async_events(limit=30)
+                rows = await self.client.async_events(limit=100)
             except asyncio.CancelledError:
                 raise
             except HanetGatewayAuthError as err:
@@ -377,6 +382,29 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 {"config_entry_id": self.entry.entry_id, **item},
             )
             self._notify(item)
+        for item in fresh:
+            self._schedule_expiry(item)
+
+    def _schedule_expiry(self, event: Mapping[str, Any]) -> None:
+        """Refresh state when a group's recency window ends."""
+        group = group_for_event(event)
+        window = GROUP_RECENCY_SECONDS.get(str(group or ""))
+        if not window:
+            return
+        age = _event_age(event.get("occurred_at")) or 0
+        delay = max(0.0, window - age) + 0.5
+        previous = self._expiry_unsubs.pop(group, None)
+        if previous is not None:
+            previous()
+
+        @callback
+        def _refresh(_now: Any) -> None:
+            self._expiry_unsubs.pop(group, None)
+            self.async_update_listeners()
+
+        self._expiry_unsubs[group] = async_call_later(
+            self.hass, delay, _refresh
+        )
 
     def _notify(self, event: Mapping[str, Any]) -> None:
         kind = str(event.get("kind") or "").casefold()
@@ -514,6 +542,7 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 {"config_entry_id": self.entry.entry_id, **dict(item)},
             )
             self._notify(item)
+            self._schedule_expiry(item)
         self._known_events.update(event_keys)
         if len(self._known_events) > 10000:
             self._known_events = set(

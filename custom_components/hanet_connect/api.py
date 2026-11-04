@@ -318,15 +318,17 @@ class HanetGatewayClient:
         """Return normalized recognition history directly from HANET Cloud."""
         day = datetime.now().astimezone().date().isoformat()
         places = self._places or await self._load_places()
+        size = min(max(int(limit), 1), 2000)
         responses = await asyncio.gather(
             *(
                 self._optional_endpoint(
                     "tracking_access_day",
                     {
                         "place_id": place["id"],
-                        "Day": day,
-                        "limit": min(max(int(limit), 1), 2000),
-                        "offset": 0,
+                        "day": day,
+                        "size": size,
+                        "page": 1,
+                        "types": [],
                     },
                 )
                 for place in places

@@ -14,6 +14,15 @@ GROUP_LABELS = {
     "visitor": "Khách",
 }
 
+GROUP_RECENCY_SECONDS = {
+    "alarm": 60,
+    "motion": 30,
+    "stranger": 120,
+    "known": 120,
+    "employee": 120,
+    "visitor": 120,
+}
+
 _MOTION_KINDS = {"human", "person", "face", "checkin", "motion"}
 
 
