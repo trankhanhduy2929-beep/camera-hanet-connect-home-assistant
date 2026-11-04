@@ -30,7 +30,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service import async_register_admin_service
 
-from ._faceid import person_face_update_fields, person_update_payload
+from ._faceid import person_face_update_fields
 from .api import HanetGatewayClient, HanetGatewayError
 from .const import (
     CONF_API_BASE,
@@ -131,6 +131,7 @@ FACEID_UPDATE_SCHEMA = vol.Schema(
         vol.Optional("person_type"): vol.All(vol.Coerce(int), vol.In((0, 1))),
         vol.Optional("alias_id"): cv.string,
         vol.Optional("department_id"): cv.string,
+        vol.Optional("previous_department_id"): cv.string,
     }
 )
 FACEID_DELETE_SCHEMA = vol.Schema(
@@ -241,11 +242,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async def faceid_update(call: ServiceCall) -> ServiceResponse:
         runtime = _runtime_for_call(hass, call)
         try:
-            payload = person_update_payload(call.data)
-            result = await runtime.client.async_call_endpoint(
-                "person_update",
-                payload,
-            )
+            result = await runtime.client.async_update_face_profile(call.data)
             if image_path := call.data.get("image_path"):
                 path = _allowed_image_path(hass, image_path)
                 image = await hass.async_add_executor_job(path.read_bytes)

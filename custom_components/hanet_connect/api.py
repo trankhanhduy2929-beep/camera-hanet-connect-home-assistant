@@ -18,6 +18,7 @@ import aiohttp
 from ._catalog import ENDPOINTS
 from ._cloud_api import HanetApiClient, endpoint_catalog
 from ._errors import HanetApiError, HanetAuthError, HanetConfigurationError
+from ._faceid import person_department_ids, person_update_payload
 from ._normalizer import (
     as_list,
     find_by_id,
@@ -576,6 +577,91 @@ class HanetGatewayClient:
             )
         )
 
+    async def async_update_face_profile(self, data: Mapping[str, Any]) -> Any:
+        """Update FaceID profile with the add-on's department fallback."""
+        payload = person_update_payload(data)
+        target_department, previous_department = person_department_ids(data)
+        try:
+            result = await self.async_call_endpoint("person_update", payload)
+        except HanetApiError as err:
+            if not (
+                target_department
+                and _is_department_schema_error(err)
+            ):
+                raise
+            _LOGGER.debug(
+                "HANET rejected department on person_update; retrying profile only: %s",
+                err,
+            )
+            fallback = {
+                key: value
+                for key, value in payload.items()
+                if key != "department_id"
+            }
+            result = await self.async_call_endpoint("person_update", fallback)
+        _ensure_mutation_success(result)
+        await self._sync_person_department(
+            str(payload["person_id"]),
+            target_department,
+            previous_department,
+        )
+        return result
+
+    async def _sync_person_department(
+        self,
+        person_id: str,
+        department_id: str,
+        previous_department_id: str,
+    ) -> None:
+        """Best-effort membership sync after a profile update."""
+        target = str(department_id or "").strip()
+        previous = str(previous_department_id or "").strip()
+        if target == previous:
+            return
+        if target:
+            try:
+                await self._apply_department_membership(
+                    "department_person_add", target, person_id
+                )
+            except (HanetApiError, HanetGatewayError) as err:
+                _LOGGER.debug("Could not add FaceID to department: %s", err)
+        if previous:
+            try:
+                await self._apply_department_membership(
+                    "department_person_remove", previous, person_id
+                )
+            except (HanetApiError, HanetGatewayError) as err:
+                _LOGGER.debug("Could not remove FaceID from old department: %s", err)
+
+    async def _apply_department_membership(
+        self,
+        endpoint: str,
+        department_id: str,
+        person_id: str,
+    ) -> Any:
+        """Try the app JSON variants accepted by department membership."""
+        person_key = "personIDs" if endpoint == "department_person_add" else "personID"
+        typed_department = _typed_identifier(department_id)
+        payloads = (
+            {"department_id": typed_department, "person_ids": person_id},
+            {"department_id": str(department_id), "person_ids": person_id},
+            {"departmentID": typed_department, person_key: person_id},
+            {"departmentID": str(department_id), person_key: person_id},
+        )
+        last_error: Exception | None = None
+        for membership_payload in payloads:
+            try:
+                result = await self.async_call_endpoint(
+                    endpoint, membership_payload
+                )
+                _ensure_mutation_success(result)
+                return result
+            except (HanetApiError, HanetGatewayError) as err:
+                last_error = err
+        if last_error is not None:
+            raise last_error
+        raise HanetGatewayError("HANET khong cap nhat duoc phong ban", status=400)
+
     async def async_catalog(self) -> dict[str, Any]:
         """Return the direct-cloud endpoint catalog."""
         return {"endpoints": endpoint_catalog()}
@@ -1029,6 +1115,38 @@ def _setting_values_equal(observed: Any, expected: Any) -> bool:
     return observed == expected
 
 
+_SCHEMA_RETRY_STATUSES = {400, 404, 405, 415, 422}
+_SCHEMA_ERROR_MARKERS = (
+    "binder",
+    "cannot unmarshal",
+    "expected int64",
+    "expected number",
+    "expected string",
+    "field is required",
+    "got number",
+    "got string",
+    "invalid type",
+    "required field",
+)
+
+def _is_department_schema_error(error: HanetApiError) -> bool:
+    field = _canonical_key(str(error.field or ""))
+    if field in {"department", "departmentid"}:
+        return True
+    if error.status in _SCHEMA_RETRY_STATUSES:
+        return True
+    message = str(error).casefold()
+    return any(marker in message for marker in _SCHEMA_ERROR_MARKERS)
+
+def _typed_identifier(value: Any) -> Any:
+    if isinstance(value, str):
+        candidate = value.strip()
+        try:
+            return int(candidate, 10)
+        except ValueError:
+            return value
+    return value
+
 def _ensure_mutation_success(result: Any) -> None:
     if not isinstance(result, Mapping):
         return
@@ -1043,11 +1161,22 @@ def _ensure_mutation_success(result: Any) -> None:
         "success",
     }:
         failed = True
+    return_code = result.get("returnCode", result.get("return_code"))
+    if return_code is not None and str(return_code).strip().casefold() not in {
+        "1",
+        "200",
+        "ok",
+        "success",
+        "true",
+    }:
+        failed = True
     if failed:
         raise HanetGatewayError(
             str(
                 result.get("message")
                 or result.get("error")
+                or result.get("returnMessage")
+                or result.get("return_message")
                 or "HANET tu choi thay doi"
             ),
             status=400,

@@ -20,7 +20,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from ._faceid import person_face_update_fields, person_update_payload
+from ._faceid import person_face_update_fields
 from .const import (
     CONF_NOTIFY_PERSISTENT,
     CONF_NOTIFY_SERVICE,
@@ -71,6 +71,7 @@ _FACE_UPDATE_SCHEMA = {
         vol.Coerce(int), vol.In((0, 1))
     ),
     vol.Optional("department_id"): str,
+    vol.Optional("previous_department_id"): str,
     vol.Optional("alias_id"): str,
     vol.Optional("sex"): vol.All(vol.Coerce(int), vol.In((0, 1))),
     vol.Optional("title"): str,
@@ -663,10 +664,7 @@ async def websocket_face_update(
         _error(connection, msg, "No loaded HANET Connect entry")
         return
     try:
-        payload = person_update_payload(msg)
-        result = await entry.runtime_data.client.async_call_endpoint(
-            "person_update", payload
-        )
+        result = await entry.runtime_data.client.async_update_face_profile(msg)
         image_value = str(msg.get("image") or "")
         if image_value:
             face_fields = person_face_update_fields(msg)

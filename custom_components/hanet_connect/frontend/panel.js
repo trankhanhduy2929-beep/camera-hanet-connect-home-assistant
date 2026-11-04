@@ -1694,7 +1694,11 @@ class HanetConnectPanel extends HTMLElement {
         message.image = await fileToDataUrl(file);
         message.filename = file.name;
       }
-      if (editing) message.person_id = form.dataset.personId;
+      if (editing) {
+        const person = (this._data?.people || []).find((item) => String(item.id) === String(form.dataset.personId));
+        message.person_id = form.dataset.personId;
+        message.previous_department_id = String(person?.department_id || "");
+      }
       const response = await this._hass.callWS(message);
       this._data = response.snapshot || this._data;
       this._dialog.close();

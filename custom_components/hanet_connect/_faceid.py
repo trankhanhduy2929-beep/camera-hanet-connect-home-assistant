@@ -8,6 +8,11 @@ from typing import Any
 PERSON_ID_KEYS = ("person_id", "personID", "personId")
 PLACE_KEYS = ("place_id", "placeId", "placeID")
 DEPARTMENT_KEYS = ("department_id", "departmentId", "departmentID")
+PREVIOUS_DEPARTMENT_KEYS = (
+    "previous_department_id",
+    "previousDepartmentId",
+    "previousDepartmentID",
+)
 
 
 def _field(source: Mapping[str, Any], *keys: str) -> Any:
@@ -82,6 +87,20 @@ def person_update_payload(data: Mapping[str, Any]) -> dict[str, Any]:
             payload["department_id"] = _cloud_id(department_id)
     return payload
 
+
+def person_department_ids(data: Mapping[str, Any]) -> tuple[str, str]:
+    """Return the requested and previous department IDs from a payload."""
+    requested = (
+        _text(_field(data, *DEPARTMENT_KEYS))
+        if _has(data, *DEPARTMENT_KEYS)
+        else ""
+    )
+    previous = _text(_field(data, *PREVIOUS_DEPARTMENT_KEYS))
+    return requested, previous
+
+def person_place_id(data: Mapping[str, Any]) -> str:
+    """Return the place ID used for multipart and membership calls."""
+    return _text(_field(data, *PLACE_KEYS))
 
 def person_face_update_fields(data: Mapping[str, Any]) -> dict[str, str]:
     """Keep only the multipart fields accepted by update-by-face-image."""
