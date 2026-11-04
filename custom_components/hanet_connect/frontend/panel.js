@@ -8,6 +8,14 @@ const TABS = [
   ["settings", "Cài đặt", "mdi:cog-outline"],
 ];
 
+const PAGE_META = {
+  cameras: { title: "Camera", eyebrow: "Tổng quan" },
+  events: { title: "Sự kiện", eyebrow: "Nhật ký hoạt động" },
+  recordings: { title: "Ghi hình", eyebrow: "Cloud recording" },
+  identity: { title: "Danh tính", eyebrow: "FaceID" },
+  settings: { title: "Cài đặt", eyebrow: "Cấu hình" },
+};
+
 const KIND_LABELS = {
   employee: "Người nhà",
   visitor: "Người quen",
@@ -259,6 +267,7 @@ class HanetConnectPanel extends HTMLElement {
     this._cameraSearch = "";
     this._identitySearch = "";
     this._identityType = "";
+    this._settingsSection = "devices";
     this._events = {
       day: localDay(), rows: [], loaded: false, loading: false, error: "",
       limit: 60, search: "", device: "", kind: "", source: "",
@@ -303,25 +312,38 @@ class HanetConnectPanel extends HTMLElement {
   connectedCallback() {
     this.shadowRoot.innerHTML = `
       <div class="hc-app">
-        <header class="hc-topbar">
+        <aside class="hc-sidebar">
           <div class="hc-brand">
             <span class="hc-brand-mark" aria-hidden="true">H</span>
             <div class="hc-brand-copy">
               <div class="hc-brand-title"><h1>HANET Connect</h1><span>Home Assistant</span></div>
-              <p id="subtitle">Đang tải dữ liệu…</p>
+              <p>Camera &amp; an ninh</p>
             </div>
           </div>
-          <div class="hc-topbar-actions">
-            <span id="connection" class="hc-connection is-waiting">
-              <span class="hc-status-dot" aria-hidden="true"></span><span>Đang kết nối</span>
-            </span>
-            <button class="hc-icon-button" type="button" data-action="refresh" title="Đồng bộ" aria-label="Đồng bộ">
-              <ha-icon icon="mdi:refresh"></ha-icon>
-            </button>
+          <div class="hc-sidebar-label">Không gian làm việc</div>
+          <nav class="hc-primary-nav" role="tablist" aria-label="Chức năng HANET Connect" id="tabs"></nav>
+          <div class="hc-sidebar-foot">
+            <ha-icon icon="mdi:shield-check-outline" aria-hidden="true"></ha-icon>
+            <span>Dữ liệu qua HANET Cloud<br>và Home Assistant</span>
           </div>
-        </header>
-        <nav class="hc-primary-nav" role="tablist" aria-label="Chức năng HANET Connect" id="tabs"></nav>
-        <main class="hc-workspace" id="content"></main>
+        </aside>
+        <div class="hc-main">
+          <header class="hc-topbar">
+            <div class="hc-topbar-copy">
+              <span class="hc-crumb">HANET Connect / <b id="page-title">Camera</b></span>
+              <p id="subtitle">Đang tải dữ liệu…</p>
+            </div>
+            <div class="hc-topbar-actions">
+              <span id="connection" class="hc-connection is-waiting">
+                <span class="hc-status-dot" aria-hidden="true"></span><span>Đang kết nối</span>
+              </span>
+              <button class="hc-icon-button" type="button" data-action="refresh" title="Đồng bộ" aria-label="Đồng bộ">
+                <ha-icon icon="mdi:refresh"></ha-icon>
+              </button>
+            </div>
+          </header>
+          <main class="hc-workspace" id="content"></main>
+        </div>
       </div>
       <dialog id="dialog" aria-modal="true"></dialog>
       <div id="toast" class="hc-toast" role="status" aria-live="polite" hidden></div>
@@ -329,6 +351,7 @@ class HanetConnectPanel extends HTMLElement {
     this.applyPanelStyles();
     this._tabs = this.shadowRoot.getElementById("tabs");
     this._content = this.shadowRoot.getElementById("content");
+    this._pageTitle = this.shadowRoot.getElementById("page-title");
     this._subtitle = this.shadowRoot.getElementById("subtitle");
     this._connection = this.shadowRoot.getElementById("connection");
     this._dialog = this.shadowRoot.getElementById("dialog");
@@ -463,12 +486,17 @@ class HanetConnectPanel extends HTMLElement {
   }
 
   render(skeleton = false) {
+    const focusedTab = this.shadowRoot.activeElement?.classList?.contains("hc-nav-item");
+    const tabChanged = this._renderedTab !== this._tab;
+    const pageMeta = PAGE_META[this._tab] || PAGE_META.cameras;
+    if (this._pageTitle) this._pageTitle.textContent = pageMeta.title;
     this._tabs.innerHTML = TABS.map(([id, label, icon]) => `
       <button class="hc-nav-item" type="button" role="tab" data-action="tab" data-tab="${id}"
         aria-selected="${this._tab === id}" aria-controls="content" tabindex="${this._tab === id ? "0" : "-1"}">
         <ha-icon icon="${icon}"></ha-icon><span>${label}</span>
       </button>
     `).join("");
+    if (focusedTab) this._tabs.querySelector(`[data-tab="${this._tab}"]`)?.focus({ preventScroll: true });
 
     if (skeleton) {
       this._subtitle.textContent = "Đang tải dữ liệu…";
@@ -495,6 +523,7 @@ class HanetConnectPanel extends HTMLElement {
     const status = this._data.status || {};
     this._subtitle.textContent = `${status.online || 0}/${status.devices || 0} camera online · ${this._data.entry_title || "HANET"}`;
     this._connection.className = `hc-connection ${status.online ? "is-online" : "is-error"}`;
+    this._connection.setAttribute("aria-label", status.online ? "Cloud online" : "Mất kết nối");
     this._connection.innerHTML = `<span class="hc-status-dot" aria-hidden="true"></span><span>${status.online ? "Cloud online" : "Mất kết nối"}</span>`;
     const renderer = {
       cameras: () => this.renderCameras(),
@@ -504,6 +533,8 @@ class HanetConnectPanel extends HTMLElement {
       settings: () => this.renderSettings(),
     }[this._tab] || (() => this.renderCameras());
     this._content.innerHTML = renderer();
+    this._renderedTab = this._tab;
+    if (tabChanged) this._content.querySelector(".hc-page")?.classList.add("is-entering");
     this.attachImageFallbacks();
     this.applyEventFilter();
     this.applyRecordingFilter();
@@ -538,6 +569,73 @@ class HanetConnectPanel extends HTMLElement {
       online: devices.filter((device) => device.online).length,
       offline: devices.filter((device) => !device.online).length,
     };
+  }
+
+  primaryDevice() {
+    const devices = this._data?.devices || [];
+    return devices.find((device) => device.online) || devices[0] || null;
+  }
+
+  cameraMedia(device, stamp = this._renderStamp || Date.now()) {
+    const event = this.latestEventFor(device.id);
+    const state = device.camera_entity ? this._hass?.states?.[device.camera_entity] : null;
+    const token = state?.attributes?.access_token;
+    const src = device.camera_entity && token
+      ? `/api/camera_proxy/${encodeURIComponent(device.camera_entity)}?token=${encodeURIComponent(token)}&t=${stamp}`
+      : event?.image || "";
+    return {
+      event,
+      src,
+      fallback: event?.image && event.image !== src ? event.image : "",
+    };
+  }
+
+  commandDeck(device) {
+    const media = this.cameraMedia(device);
+    const offline = !device.online;
+    const pad = PTZ_PAD.map(([command, icon]) => `
+      <button class="hc-deck-pad-button${command === "stop" ? " is-stop" : ""}" type="button"
+        data-action="camera-command" data-device="${esc(device.id)}" data-command="${command}"
+        ${HOLD_COMMANDS.has(command) ? "data-hold" : ""} ${offline ? "disabled" : ""}
+        aria-label="${esc(commandLabel(command))}" title="${esc(commandLabel(command))}">
+        <ha-icon icon="${icon}"></ha-icon>
+      </button>`).join("");
+    return `
+      <section class="hc-command-hero" aria-label="Điều khiển nhanh ${esc(device.name || "camera")}">
+        <button class="hc-command-preview" type="button" data-action="camera-preview" data-device="${esc(device.id)}" aria-label="Xem ${esc(device.name || "camera")}">
+          ${art(media.src, device.name || "Camera", media.fallback)}
+          <span class="hc-command-preview-top">
+            <span class="hc-state-badge ${device.online ? "is-online" : ""}"><span></span>${device.online ? "Online" : "Offline"}</span>
+            ${media.event ? `<span class="hc-preview-note"><ha-icon icon="mdi:clock-outline"></ha-icon>${esc(relative(media.event.occurred_at))}</span>` : ""}
+          </span>
+          <span class="hc-command-preview-copy">
+            <span class="hc-eyebrow">Camera chính</span>
+            <strong>${esc(device.name || "Camera HANET")}</strong>
+            <span>${esc(device.place_name || "Chưa rõ địa điểm")} · ${media.event ? esc(kindLabel(media.event)) : "Chưa có sự kiện"}</span>
+          </span>
+          <span class="hc-command-expand"><ha-icon icon="mdi:arrow-expand"></ha-icon>Xem lớn</span>
+        </button>
+        <aside class="hc-command-deck">
+          <div class="hc-command-deck-head">
+            <div><span class="hc-eyebrow">Command deck</span><strong>Điều khiển nhanh</strong><span>Thao tác trực tiếp, không mở hộp thoại.</span></div>
+            <span class="hc-state-badge ${device.online ? "is-online" : ""}"><span></span>${device.online ? "Sẵn sàng" : "Ngoại tuyến"}</span>
+          </div>
+          <div class="hc-deck-actions" role="group" aria-label="Cửa và cảnh báo">
+            <button class="hc-deck-action" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="open_door" ${offline ? "disabled" : ""}><span class="hc-deck-icon"><ha-icon icon="mdi:door-open"></ha-icon></span><span><b>Mở cửa</b><small>Cổng chính</small></span></button>
+            <button class="hc-deck-action" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="close_door" ${offline ? "disabled" : ""}><span class="hc-deck-icon"><ha-icon icon="mdi:door-closed"></ha-icon></span><span><b>Đóng cửa</b><small>Cổng chính</small></span></button>
+            <button class="hc-deck-action" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="alarm" ${offline ? "disabled" : ""}><span class="hc-deck-icon is-warn"><ha-icon icon="mdi:alarm-light"></ha-icon></span><span><b>Bật còi</b><small>Cảnh báo</small></span></button>
+            <button class="hc-deck-action" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="stop_alarm" ${offline ? "disabled" : ""}><span class="hc-deck-icon is-warn"><ha-icon icon="mdi:alarm-light-off"></ha-icon></span><span><b>Tắt còi</b><small>Kết thúc</small></span></button>
+          </div>
+          <div class="hc-deck-controls">
+            <div class="hc-deck-pad" aria-label="PTZ">${pad}</div>
+            <div class="hc-deck-zoom">
+              <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="zoomIn" data-hold ${offline ? "disabled" : ""}><ha-icon icon="mdi:magnify-plus-outline"></ha-icon><span>Phóng to</span></button>
+              <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="zoomOut" data-hold ${offline ? "disabled" : ""}><ha-icon icon="mdi:magnify-minus-outline"></ha-icon><span>Thu nhỏ</span></button>
+              <button class="hc-secondary-button" type="button" data-action="camera-controls" data-device="${esc(device.id)}"><ha-icon icon="mdi:gamepad-variant-outline"></ha-icon><span>Mở điều khiển</span></button>
+            </div>
+          </div>
+        </aside>
+      </section>`;
   }
 
   renderCameras() {
@@ -580,6 +678,7 @@ class HanetConnectPanel extends HTMLElement {
             <div><strong>${this._data.people?.length || 0}</strong><span>Danh tính FaceID</span></div>
           </article>
         </div>
+        ${this.primaryDevice() ? this.commandDeck(this.primaryDevice()) : ""}
         <div class="hc-section-heading">
           <div><h3>Danh sách camera</h3><p id="camera-count">${devices.length} thiết bị</p></div>
         </div>
@@ -898,65 +997,109 @@ class HanetConnectPanel extends HTMLElement {
     const data = this._data;
     const settings = data.settings || {};
     const status = data.status || {};
+    const devices = data.devices || [];
+    const writable = devices.filter((device) => (device.settings || []).length);
+    const settingCount = writable.reduce((total, device) => total + (device.settings || []).length, 0);
     const transport = status.transport === "sse" ? "SSE trực tiếp" : status.transport || "Cloud polling";
+    const section = this._settingsSection || "devices";
+    const current = (id) => section === id ? 'aria-current="page"' : "";
+    const hidden = (id) => section === id ? "" : "hidden";
     return `
-      <section class="hc-page">
+      <section class="hc-page hc-settings-page">
         <div class="hc-page-heading">
           <div>
             <span class="hc-eyebrow">Cấu hình</span>
             <h2>Cài đặt</h2>
-            <p>Thời gian giữ trạng thái, thông báo và thông tin kết nối HANET.</p>
+            <p>Thiết bị, thời gian giữ trạng thái, thông báo và kết nối HANET.</p>
           </div>
+          <div class="hc-toolbar"><span class="hc-settings-summary"><ha-icon icon="mdi:tune-variant"></ha-icon>${settingCount} thông số thiết bị</span></div>
         </div>
-        ${this.deviceSettingsMarkup()}
-        <div class="hc-settings-grid">
-          <form class="hc-settings-card" data-form="settings">
-            <div class="hc-settings-heading">
-              <span class="hc-settings-icon"><ha-icon icon="mdi:timer-sand"></ha-icon></span>
-              <div><h3>Thời gian giữ trạng thái</h3><p>Số giây sensor giữ ON sau lần nhận diện gần nhất.</p></div>
-            </div>
-            <div class="hc-field-grid">
-              ${(data.groups || []).map((group) => `
-                <label class="hc-field">
-                  <span>${esc(group.label)} (giây)</span>
-                  <input type="number" min="1" max="3600" step="1" required name="recency_${esc(group.group)}" value="${Number(settings[`recency_${group.group}`] || 10)}">
-                </label>`).join("")}
-            </div>
-            <div class="hc-divider"></div>
-            <div class="hc-settings-heading">
-              <span class="hc-settings-icon is-bell"><ha-icon icon="mdi:bell-outline"></ha-icon></span>
-              <div><h3>Thông báo</h3><p>Gửi thông báo khi HANET nhận diện sự kiện mới.</p></div>
-            </div>
-            <label class="hc-field">
-              <span>Dịch vụ notify</span>
-              <input type="text" name="notify_service" placeholder="notify.mobile_app_abc" value="${esc(settings.notify_service || "")}">
-            </label>
-            <label class="hc-check-field">
-              <input type="checkbox" name="notify_persistent" ${settings.notify_persistent ? "checked" : ""}>
-              <span>Hiện thông báo trong Home Assistant</span>
-            </label>
-            <div class="hc-form-actions">
-              <button class="hc-primary-button" type="submit"><ha-icon icon="mdi:content-save-outline"></ha-icon><span>Lưu cài đặt</span></button>
-            </div>
-          </form>
-          <aside class="hc-settings-card">
-            <div class="hc-settings-heading">
-              <span class="hc-settings-icon is-cloud"><ha-icon icon="mdi:cloud-check-outline"></ha-icon></span>
-              <div><h3>Trạng thái kết nối</h3><p>Kênh dữ liệu và thông tin integration.</p></div>
-            </div>
-            <div class="hc-status-list">
-              <div><span>Realtime</span><strong>${esc(transport)}</strong></div>
-              <div><span>Độ trễ gần nhất</span><strong>${status.latency_seconds != null ? `${esc(status.latency_seconds)} giây` : "—"}</strong></div>
-              <div><span>Sự kiện gần nhất</span><strong>${esc(relative(status.last_event_at))}</strong></div>
-              <div><span>Camera online</span><strong>${status.online || 0}/${status.devices || 0}</strong></div>
-              <div><span>FaceID</span><strong>${data.people?.length || 0}</strong></div>
-              <div><span>Config entry</span><strong class="hc-code">${esc(data.entry_id)}</strong></div>
-            </div>
-            <div class="hc-notice">
-              <ha-icon icon="mdi:information-outline"></ha-icon>
-              <p>Ghi hình hiện hỗ trợ Cloud. Thẻ SD cần daemon/P2P riêng nên chưa có trong custom component.</p>
-            </div>
-          </aside>
+        <div class="hc-settings-layout">
+          <nav class="hc-settings-nav" aria-label="Nhóm cài đặt">
+            <button type="button" data-action="settings-section" data-section="devices" ${current("devices")}>
+              <span class="hc-settings-nav-icon"><ha-icon icon="mdi:cctv"></ha-icon></span>
+              <span><b>Thiết bị</b><small>${writable.length} camera</small></span>
+            </button>
+            <button type="button" data-action="settings-section" data-section="general" ${current("general")}>
+              <span class="hc-settings-nav-icon"><ha-icon icon="mdi:timer-sand"></ha-icon></span>
+              <span><b>Chung</b><small>Trạng thái &amp; thông báo</small></span>
+            </button>
+            <button type="button" data-action="settings-section" data-section="connection" ${current("connection")}>
+              <span class="hc-settings-nav-icon"><ha-icon icon="mdi:cloud-check-outline"></ha-icon></span>
+              <span><b>Kết nối</b><small>Cloud &amp; FaceID</small></span>
+            </button>
+          </nav>
+          <div class="hc-settings-panels">
+            <section class="hc-settings-panel" data-settings-panel="devices" ${hidden("devices")}>
+              <div class="hc-settings-panel-head">
+                <div><h3>Thiết bị</h3><p>Chỉnh trực tiếp thông số camera qua HANET Cloud.</p></div>
+                <span class="hc-count-pill">${devices.length} camera</span>
+              </div>
+              ${writable.length ? this.deviceSettingsMarkup() : this.empty("mdi:cctv-off", "Chưa có cài đặt thiết bị", "Camera chưa trả về thông số có thể ghi, hoặc tài khoản chưa có quyền cấu hình.")}
+            </section>
+            <section class="hc-settings-panel" data-settings-panel="general" ${hidden("general")}>
+              <div class="hc-settings-panel-head">
+                <div><h3>Chung</h3><p>Thời gian giữ trạng thái và kênh thông báo.</p></div>
+              </div>
+              <form class="hc-settings-form" data-form="settings">
+                <article class="hc-settings-card">
+                  <div class="hc-settings-heading">
+                    <span class="hc-settings-icon"><ha-icon icon="mdi:timer-sand"></ha-icon></span>
+                    <div><h3>Thời gian giữ trạng thái</h3><p>Số giây sensor giữ ON sau lần nhận diện gần nhất.</p></div>
+                  </div>
+                  <div class="hc-field-grid">
+                    ${(data.groups || []).map((group) => `
+                      <label class="hc-field">
+                        <span>${esc(group.label)} (giây)</span>
+                        <input type="number" min="1" max="3600" step="1" required name="recency_${esc(group.group)}" value="${Number(settings[`recency_${group.group}`] || 10)}">
+                      </label>`).join("")}
+                  </div>
+                </article>
+                <article class="hc-settings-card">
+                  <div class="hc-settings-heading">
+                    <span class="hc-settings-icon is-bell"><ha-icon icon="mdi:bell-outline"></ha-icon></span>
+                    <div><h3>Thông báo</h3><p>Gửi thông báo khi HANET nhận diện sự kiện mới.</p></div>
+                  </div>
+                  <label class="hc-field">
+                    <span>Dịch vụ notify</span>
+                    <input type="text" name="notify_service" placeholder="notify.mobile_app_abc" value="${esc(settings.notify_service || "")}">
+                  </label>
+                  <label class="hc-check-field">
+                    <input type="checkbox" name="notify_persistent" ${settings.notify_persistent ? "checked" : ""}>
+                    <span>Hiện thông báo trong Home Assistant</span>
+                  </label>
+                </article>
+                <div class="hc-settings-save">
+                  <span>Thay đổi được áp dụng cho integration HANET Connect.</span>
+                  <button class="hc-primary-button" type="submit"><ha-icon icon="mdi:content-save-outline"></ha-icon><span>Lưu cài đặt</span></button>
+                </div>
+              </form>
+            </section>
+            <section class="hc-settings-panel" data-settings-panel="connection" ${hidden("connection")}>
+              <div class="hc-settings-panel-head">
+                <div><h3>Kết nối</h3><p>Kênh dữ liệu và thông tin integration.</p></div>
+                <span class="hc-state-badge ${status.online ? "is-online" : ""}"><span></span>${status.online ? "Cloud online" : "Mất kết nối"}</span>
+              </div>
+              <article class="hc-settings-card">
+                <div class="hc-settings-heading">
+                  <span class="hc-settings-icon is-cloud"><ha-icon icon="mdi:cloud-check-outline"></ha-icon></span>
+                  <div><h3>Trạng thái kết nối</h3><p>Kênh dữ liệu và thông tin integration.</p></div>
+                </div>
+                <div class="hc-status-list">
+                  <div><span>Realtime</span><strong>${esc(transport)}</strong></div>
+                  <div><span>Độ trễ gần nhất</span><strong>${status.latency_seconds != null ? `${esc(status.latency_seconds)} giây` : "—"}</strong></div>
+                  <div><span>Sự kiện gần nhất</span><strong>${esc(relative(status.last_event_at))}</strong></div>
+                  <div><span>Camera online</span><strong>${status.online || 0}/${status.devices || 0}</strong></div>
+                  <div><span>FaceID</span><strong>${data.people?.length || 0}</strong></div>
+                  <div><span>Config entry</span><strong class="hc-code">${esc(data.entry_id)}</strong></div>
+                </div>
+              </article>
+              <div class="hc-notice">
+                <ha-icon icon="mdi:information-outline"></ha-icon>
+                <p>Ghi hình hiện hỗ trợ Cloud. Thẻ SD cần daemon/P2P riêng nên chưa có trong custom component.</p>
+              </div>
+            </section>
+          </div>
         </div>
       </section>`;
   }
@@ -1034,6 +1177,8 @@ class HanetConnectPanel extends HTMLElement {
       this.openCameraControls(target.dataset.device);
     } else if (action === "camera-settings") {
       this.openCameraSettings(target.dataset.device);
+    } else if (action === "settings-section") {
+      this.setSettingsSection(target.dataset.section);
     } else if (action === "camera-command") {
       if (target.hasAttribute("data-hold")) return;
       const device = this.deviceById(target.dataset.device);
@@ -1060,6 +1205,18 @@ class HanetConnectPanel extends HTMLElement {
     this.render();
     if (this._tab === "events" && (force || !this._events.loaded)) this.loadEvents();
     if (this._tab === "recordings" && (force || !this._recordings.loaded)) this.loadRecordings();
+  }
+
+  setSettingsSection(section) {
+    const allowed = ["devices", "general", "connection"];
+    this._settingsSection = allowed.includes(section) ? section : "devices";
+    this.shadowRoot.querySelectorAll("[data-settings-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.settingsPanel !== this._settingsSection;
+    });
+    this.shadowRoot.querySelectorAll('[data-action="settings-section"]').forEach((button) => {
+      if (button.dataset.section === this._settingsSection) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
   }
 
   setDay(kind, day) {
@@ -1096,7 +1253,7 @@ class HanetConnectPanel extends HTMLElement {
       : event.key === "End" ? tabs.length - 1
         : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
     this.openTab(tabs[next].dataset.tab);
-    this._tabs.querySelector(`[data-tab="${this._tab}"]`)?.focus();
+    this._tabs.querySelector(`[data-tab="${this._tab}"]`)?.focus({ preventScroll: true });
   }
 
   onCardKeydown(event) {
@@ -1297,46 +1454,64 @@ class HanetConnectPanel extends HTMLElement {
   openCameraControls(deviceId) {
     const device = this.deviceById(deviceId);
     if (!device) return;
+    const media = this.cameraMedia(device, Date.now());
+    const offline = !device.online;
     const pad = PTZ_PAD.map(([command, icon]) => `
-      <button class="hc-ptz-button${command === "stop" ? " is-stop" : ""}" type="button"
+      <button class="hc-control-pad-button${command === "stop" ? " is-stop" : ""}" type="button"
         data-action="camera-command" data-device="${esc(device.id)}" data-command="${command}"
-        ${HOLD_COMMANDS.has(command) ? "data-hold" : ""} aria-label="${esc(commandLabel(command))}" title="${esc(commandLabel(command))}">
+        ${HOLD_COMMANDS.has(command) ? "data-hold" : ""} ${offline ? "disabled" : ""}
+        aria-label="${esc(commandLabel(command))}" title="${esc(commandLabel(command))}">
         <ha-icon icon="${icon}"></ha-icon>
       </button>`).join("");
     this._dialog.innerHTML = `
       <div class="hc-dialog-head">
-        <div><span class="hc-eyebrow">Điều khiển</span><h2>${esc(device.name || "Camera")}</h2></div>
-        <button class="hc-icon-button" type="button" data-action="close-dialog" aria-label="Đóng"><ha-icon icon="mdi:close"></ha-icon></button>
+        <div><span class="hc-eyebrow">Command deck</span><h2>${esc(device.name || "Camera")}</h2></div>
+        <div class="hc-dialog-head-actions">
+          <span class="hc-state-badge ${device.online ? "is-online" : ""}"><span></span>${device.online ? "Online" : "Offline"}</span>
+          <button class="hc-icon-button" type="button" data-action="close-dialog" aria-label="Đóng"><ha-icon icon="mdi:close"></ha-icon></button>
+        </div>
       </div>
-      <div class="hc-dialog-body">
-        <div class="hc-control-grid">
-          <section class="hc-control-section">
-            <h3>Hướng &amp; thu phóng</h3>
-            <div class="hc-ptz-layout">
-              <div class="hc-ptz-pad">${pad}</div>
-              <div class="hc-control-buttons is-stack">
-                <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="zoomIn" data-hold><ha-icon icon="mdi:magnify-plus-outline"></ha-icon><span>Phóng to</span></button>
-                <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="zoomOut" data-hold><ha-icon icon="mdi:magnify-minus-outline"></ha-icon><span>Thu nhỏ</span></button>
-                <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="autoScan"><ha-icon icon="mdi:pan-horizontal"></ha-icon><span>Quét tự động</span></button>
+      <div class="hc-dialog-body hc-control-dialog-body">
+        <div class="hc-control-layout">
+          <div class="hc-control-media">
+            ${art(media.src, device.name || "Camera", media.fallback)}
+            <div class="hc-control-media-top"><span class="hc-live-tag"><span></span>Live view</span><span class="hc-live-tag">${media.event ? esc(kindLabel(media.event)) : "Chưa có sự kiện"}</span></div>
+            <div class="hc-control-media-copy">
+              <strong>${esc(device.name || "Camera HANET")}</strong>
+              <span>${esc(device.place_name || "Chưa rõ địa điểm")}${media.event ? ` · ${esc(relative(media.event.occurred_at))}` : ""}</span>
+            </div>
+          </div>
+          <div class="hc-control-panel">
+            <section class="hc-control-section">
+              <div class="hc-control-section-head"><span class="hc-control-section-icon"><ha-icon icon="mdi:door-open"></ha-icon></span><div><h3>Cửa &amp; cảnh báo</h3><p>Thao tác tức thời trên camera đang chọn.</p></div></div>
+              <div class="hc-command-grid">
+                <button class="hc-command-tile" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="open_door" ${offline ? "disabled" : ""}><ha-icon icon="mdi:door-open"></ha-icon><span><b>Mở cửa</b><small>Cổng chính</small></span></button>
+                <button class="hc-command-tile" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="close_door" ${offline ? "disabled" : ""}><ha-icon icon="mdi:door-closed"></ha-icon><span><b>Đóng cửa</b><small>Cổng chính</small></span></button>
+                <button class="hc-command-tile is-warn" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="alarm" ${offline ? "disabled" : ""}><ha-icon icon="mdi:alarm-light"></ha-icon><span><b>Bật còi</b><small>Cảnh báo</small></span></button>
+                <button class="hc-command-tile is-warn" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="stop_alarm" ${offline ? "disabled" : ""}><ha-icon icon="mdi:alarm-light-off"></ha-icon><span><b>Tắt còi</b><small>Kết thúc</small></span></button>
               </div>
-            </div>
-            <p class="hc-control-note">Giữ nút hướng hoặc thu phóng để di chuyển liên tục, thả ra để dừng.</p>
-          </section>
-          <section class="hc-control-section">
-            <h3>Cửa &amp; cảnh báo</h3>
-            <div class="hc-control-buttons">
-              <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="open_door"><ha-icon icon="mdi:door-open"></ha-icon><span>Mở cửa</span></button>
-              <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="close_door"><ha-icon icon="mdi:door-closed"></ha-icon><span>Đóng cửa</span></button>
-              <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="alarm"><ha-icon icon="mdi:alarm-light"></ha-icon><span>Bật còi</span></button>
-              <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="stop_alarm"><ha-icon icon="mdi:alarm-light-off"></ha-icon><span>Tắt còi</span></button>
-            </div>
-          </section>
+            </section>
+            <section class="hc-control-section">
+              <div class="hc-control-section-head"><span class="hc-control-section-icon"><ha-icon icon="mdi:gamepad-variant-outline"></ha-icon></span><div><h3>Hướng &amp; thu phóng</h3><p>Giữ nút để di chuyển liên tục, thả để dừng.</p></div></div>
+              <div class="hc-control-pad-layout">
+                <div class="hc-control-pad">${pad}</div>
+                <div class="hc-control-zoom">
+                  <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="zoomIn" data-hold ${offline ? "disabled" : ""}><ha-icon icon="mdi:magnify-plus-outline"></ha-icon><span>Phóng to</span></button>
+                  <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="zoomOut" data-hold ${offline ? "disabled" : ""}><ha-icon icon="mdi:magnify-minus-outline"></ha-icon><span>Thu nhỏ</span></button>
+                  <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="autoScan" ${offline ? "disabled" : ""}><ha-icon icon="mdi:pan-horizontal"></ha-icon><span>Quét tự động</span></button>
+                  <button class="hc-secondary-button" type="button" data-action="camera-command" data-device="${esc(device.id)}" data-command="stop" ${offline ? "disabled" : ""}><ha-icon icon="mdi:stop"></ha-icon><span>Dừng PTZ</span></button>
+                </div>
+              </div>
+            </section>
+            <div class="hc-control-note"><ha-icon icon="mdi:information-outline"></ha-icon><span>Lệnh được gửi trực tiếp qua HANET Cloud. Nút điều khiển tạm khoá trong lúc chờ phản hồi.</span></div>
+          </div>
         </div>
         <div class="hc-dialog-actions">
           <button class="hc-secondary-button" type="button" data-action="camera-settings" data-device="${esc(device.id)}"><ha-icon icon="mdi:cog-outline"></ha-icon><span>Cài đặt camera</span></button>
-          <button class="hc-secondary-button" type="button" data-action="close-dialog">Đóng</button>
+          <button class="hc-primary-button" type="button" data-action="close-dialog">Đóng điều khiển</button>
         </div>
       </div>`;
+    this.attachImageFallbacks();
     this._dialog.showModal();
   }
 
@@ -1344,7 +1519,7 @@ class HanetConnectPanel extends HTMLElement {
     const common = `data-setting-key="${esc(setting.key)}" data-device="${esc(deviceId)}" data-setting-current="${esc(JSON.stringify(setting.value ?? ""))}"`;
     const value = setting.value;
     if (setting.kind === "boolean") {
-      return `<input type="checkbox" role="switch" ${common} ${truthy(value) ? "checked" : ""} aria-label="${esc(setting.label)}">`;
+      return `<span class="hc-switch"><input type="checkbox" role="switch" ${common} ${truthy(value) ? "checked" : ""} aria-label="${esc(setting.label)}"><span class="hc-switch-track" aria-hidden="true"></span></span>`;
     }
     if (setting.kind === "select") {
       const options = setting.options || [];
@@ -1356,13 +1531,13 @@ class HanetConnectPanel extends HTMLElement {
       const missing = current && !options.some((option) => String(option.value) === current)
         ? `<option value="${esc(current)}" selected>${esc(current)}</option>`
         : "";
-      return `<select ${common} aria-label="${esc(setting.label)}">${missing}${rendered}</select>`;
+      return `<span class="hc-select-wrap"><select ${common} aria-label="${esc(setting.label)}">${missing}${rendered}</select><ha-icon icon="mdi:chevron-down" aria-hidden="true"></ha-icon></span>`;
     }
     if (setting.kind === "number") {
       const step = Number.isInteger(Number(value)) ? "1" : "0.1";
-      return `<input type="number" ${common} step="${step}" value="${esc(value ?? 0)}" aria-label="${esc(setting.label)}">`;
+      return `<input class="hc-setting-input" type="number" ${common} step="${step}" value="${esc(value ?? 0)}" aria-label="${esc(setting.label)}">`;
     }
-    return `<input type="text" ${common} value="${esc(value ?? "")}" aria-label="${esc(setting.label)}">`;
+    return `<input class="hc-setting-input" type="text" ${common} value="${esc(value ?? "")}" aria-label="${esc(setting.label)}">`;
   }
 
   settingsMarkup(device) {
@@ -1390,18 +1565,17 @@ class HanetConnectPanel extends HTMLElement {
   deviceSettingsMarkup() {
     const devices = (this._data?.devices || []).filter((device) => (device.settings || []).length);
     if (!devices.length) return "";
-    return `<div class="hc-section-heading">
-      <div><h3>Cài đặt thiết bị</h3><p>Chỉnh trực tiếp thông số camera qua HANET cloud.</p></div>
-    </div>
-    <div class="hc-device-settings">
-      ${devices.map((device) => `<article class="hc-device-settings-row">
+    return `<div class="hc-device-settings">
+      ${devices.map((device) => `<article class="hc-device-settings-row ${device.online ? "is-online" : "is-offline"}">
+        <span class="hc-device-icon" aria-hidden="true"><ha-icon icon="mdi:cctv"></ha-icon><i></i></span>
         <div class="hc-device-settings-info">
           <strong>${esc(device.name || device.id)}</strong>
-          <span>${esc(device.place_name || "Chưa rõ địa điểm")} · ${(device.settings || []).length} thông số</span>
+          <span>${esc(device.place_name || "Chưa rõ địa điểm")} · ${esc(device.model || "HANET")}</span>
         </div>
+        <span class="hc-count-pill">${(device.settings || []).length} thông số</span>
         <div class="hc-device-settings-actions">
           <button class="hc-secondary-button" type="button" data-action="camera-controls" data-device="${esc(device.id)}"><ha-icon icon="mdi:gamepad-variant-outline"></ha-icon><span>Điều khiển</span></button>
-          <button class="hc-secondary-button" type="button" data-action="camera-settings" data-device="${esc(device.id)}"><ha-icon icon="mdi:cog-outline"></ha-icon><span>Cài đặt</span></button>
+          <button class="hc-primary-button" type="button" data-action="camera-settings" data-device="${esc(device.id)}"><ha-icon icon="mdi:cog-outline"></ha-icon><span>Cài đặt</span></button>
         </div>
       </article>`).join("")}
     </div>`;
@@ -1462,11 +1636,15 @@ class HanetConnectPanel extends HTMLElement {
     const deviceId = input.dataset.device;
     const setting = input.dataset.settingKey;
     const device = this.deviceById(deviceId);
-    const row = (device?.settings || []).find((item) => item.key === setting);
+    const definition = (device?.settings || []).find((item) => item.key === setting);
+    const settingRow = input.closest(".hc-setting-row");
     const value = input.type === "checkbox" ? input.checked
       : input.type === "number" ? Number(input.value) : input.value;
     const previous = input.dataset.settingCurrent;
     input.disabled = true;
+    input.setAttribute("aria-busy", "true");
+    settingRow?.classList.remove("is-saved", "is-error");
+    settingRow?.classList.add("is-saving");
     try {
       const response = await this._hass.callWS({
         type: "hanet_connect/panel/setting",
@@ -1476,12 +1654,25 @@ class HanetConnectPanel extends HTMLElement {
       });
       this._data = response.snapshot || this._data;
       input.dataset.settingCurrent = JSON.stringify(value);
-      this.toast(`${row?.label || setting} đã cập nhật`);
+      settingRow?.classList.remove("is-saving");
+      settingRow?.classList.add("is-saved");
+      window.clearTimeout(settingRow?._hcSavedTimer);
+      if (settingRow) {
+        settingRow._hcSavedTimer = window.setTimeout(() => settingRow.classList.remove("is-saved"), 1400);
+      }
+      this.toast(`${definition?.label || setting} đã cập nhật`);
     } catch (error) {
       this.restoreSettingInput(input, previous);
+      settingRow?.classList.remove("is-saving");
+      settingRow?.classList.add("is-error");
+      window.clearTimeout(settingRow?._hcErrorTimer);
+      if (settingRow) {
+        settingRow._hcErrorTimer = window.setTimeout(() => settingRow.classList.remove("is-error"), 1800);
+      }
       this.toast(this.wsError(error), true);
     } finally {
       input.disabled = false;
+      input.removeAttribute("aria-busy");
     }
   }
 
