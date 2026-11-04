@@ -364,7 +364,8 @@
         "title": "HANET Connect",
         "menu_options": {
           "notifications": "Thông báo",
-          "license": "License và kích hoạt"
+          "license": "License và kích hoạt",
+          "recognition": "Thời gian giữ trạng thái"
         }
       },
       "notifications": {
@@ -373,6 +374,17 @@
         "data": {
           "notify_service": "Dịch vụ notify (ví dụ notify.mobile_app_abc)",
           "notify_persistent": "Hiện thông báo trong Home Assistant"
+        }
+      },
+      "recognition": {
+        "title": "Thời gian giữ trạng thái",
+        "description": "Số giây mỗi sensor giữ ON sau lần nhận diện gần nhất. Chuyển động mặc định 5 giây, báo động và nhận diện người 10 giây. Đặt 1 giây nếu muốn tắt gần như ngay.",
+        "data": {
+          "recency_alarm": "Báo động (giây)",
+          "recency_motion": "Chuyển động (giây)",
+          "recency_stranger": "Người lạ (giây)",
+          "recency_known": "Người quen (giây)",
+          "recency_employee": "Người nhà (giây)"
         }
       }
     },

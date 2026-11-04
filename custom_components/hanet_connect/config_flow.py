@@ -33,6 +33,7 @@ from .const import (
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
 )
+from .groups import ADJUSTABLE_GROUPS, group_recency
 from .license import (
     LICENSE_STATUS_ACTIVE,
     LICENSE_STATUS_GRACE,
@@ -349,7 +350,7 @@ class HanetConnectOptionsFlow(config_entries.OptionsFlow):
         """Open license or notification settings."""
         return self.async_show_menu(
             step_id="init",
-            menu_options=["notifications", "license"],
+            menu_options=["notifications", "recognition", "license"],
         )
 
     async def async_step_notifications(
@@ -384,6 +385,38 @@ class HanetConnectOptionsFlow(config_entries.OptionsFlow):
                     ): selector.BooleanSelector(),
                 }
             ),
+        )
+
+    async def async_step_recognition(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Adjust how long each recognition sensor stays on."""
+        options = dict(self.config_entry.options)
+        if user_input is not None:
+            return self.async_create_entry(
+                title="",
+                data={**options, **user_input},
+            )
+        schema: dict[Any, Any] = {}
+        for group in ADJUSTABLE_GROUPS:
+            key = f"recency_{group}"
+            schema[
+                vol.Optional(
+                    key,
+                    default=group_recency(group, options),
+                )
+            ] = selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=3600,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="s",
+                )
+            )
+        return self.async_show_form(
+            step_id="recognition",
+            data_schema=vol.Schema(schema),
         )
 
     async def async_step_license(

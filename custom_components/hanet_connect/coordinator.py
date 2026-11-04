@@ -33,7 +33,7 @@ from .const import (
     EVENT_TYPE,
     NOTIFY_KINDS,
 )
-from .groups import GROUP_RECENCY_SECONDS, group_for_event, group_matches
+from .groups import group_for_event, group_matches, group_recency
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -388,9 +388,7 @@ class HanetCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _schedule_expiry(self, event: Mapping[str, Any]) -> None:
         """Refresh state when a group's recency window ends."""
         group = group_for_event(event)
-        window = GROUP_RECENCY_SECONDS.get(str(group or ""))
-        if not window:
-            return
+        window = group_recency(str(group or ""), self.entry.options)
         age = _event_age(event.get("occurred_at")) or 0
         delay = max(0.0, window - age) + 0.5
         previous = self._expiry_unsubs.pop(group, None)

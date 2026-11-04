@@ -16,7 +16,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import HanetConfigEntry
 from .coordinator import HanetCoordinator
 from .entity import HanetEntity, as_bool, setup_dynamic_entities
-from .groups import GROUP_RECENCY_SECONDS, event_attributes
+from .groups import event_attributes, group_recency
 
 
 async def async_setup_entry(
@@ -77,7 +77,9 @@ class HanetRecognitionBinarySensor(HanetEntity, BinarySensorEntity):
         """Return whether this group fired in the recent window."""
         window = self.recency_seconds
         if window is None:
-            window = GROUP_RECENCY_SECONDS.get(self.group, 60)
+            window = group_recency(
+                self.group, self.coordinator.entry.options
+            )
         return (
             self.coordinator.latest_group_event(
                 self.device_id,
@@ -113,7 +115,6 @@ class HanetStrangerSensor(HanetRecognitionBinarySensor):
     _attr_translation_key = "stranger"
     _attr_icon = "mdi:account-alert"
     group = "stranger"
-    recency_seconds = 120
 
     def __init__(self, coordinator: Any, device_id: str) -> None:
         super().__init__(coordinator, device_id, "stranger")
@@ -136,7 +137,6 @@ class HanetMotionSensor(HanetRecognitionBinarySensor):
     _attr_translation_key = "motion"
     _attr_icon = "mdi:motion-sensor"
     group = "motion"
-    recency_seconds = 30
 
     def __init__(self, coordinator: Any, device_id: str) -> None:
         super().__init__(coordinator, device_id, "motion")
@@ -148,7 +148,6 @@ class HanetAlarmSensor(HanetRecognitionBinarySensor):
     _attr_translation_key = "alarm"
     _attr_icon = "mdi:alarm-light"
     group = "alarm"
-    recency_seconds = 60
 
     def __init__(self, coordinator: Any, device_id: str) -> None:
         super().__init__(coordinator, device_id, "alarm")

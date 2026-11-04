@@ -364,7 +364,8 @@
         "title": "HANET Connect",
         "menu_options": {
           "notifications": "Notifications",
-          "license": "License and activation"
+          "license": "License and activation",
+          "recognition": "State hold time"
         }
       },
       "notifications": {
@@ -373,6 +374,17 @@
         "data": {
           "notify_service": "Notify service (for example notify.mobile_app_abc)",
           "notify_persistent": "Show notifications in Home Assistant"
+        }
+      },
+      "recognition": {
+        "title": "State hold time",
+        "description": "Seconds each sensor stays ON after the latest recognition. Motion defaults to 5 seconds; alarm and person sensors to 10 seconds. Use 1 second to turn off almost immediately.",
+        "data": {
+          "recency_alarm": "Alarm (seconds)",
+          "recency_motion": "Motion (seconds)",
+          "recency_stranger": "Stranger (seconds)",
+          "recency_known": "Known person (seconds)",
+          "recency_employee": "Resident (seconds)"
         }
       }
     },

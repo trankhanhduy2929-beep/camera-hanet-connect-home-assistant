@@ -43,6 +43,7 @@ from .const import (
 )
 from .coordinator import HanetCoordinator
 from .license_manager import HanetLicenseManager, HanetLicenseUnavailableError
+from .panel import async_register_panel
 
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
 ATTR_ENDPOINT = "endpoint"
@@ -151,6 +152,7 @@ FACEID_BULK_CREATE_SCHEMA = vol.Schema(
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Register integration actions independently of loaded entries."""
+    await async_register_panel(hass)
 
     async def call_endpoint(call: ServiceCall) -> ServiceResponse:
         runtime = _runtime_for_call(hass, call)

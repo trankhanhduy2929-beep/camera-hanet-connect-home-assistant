@@ -15,15 +15,29 @@ GROUP_LABELS = {
 }
 
 GROUP_RECENCY_SECONDS = {
-    "alarm": 60,
-    "motion": 30,
-    "stranger": 120,
-    "known": 120,
-    "employee": 120,
-    "visitor": 120,
+    "alarm": 10,
+    "motion": 5,
+    "stranger": 10,
+    "known": 10,
+    "employee": 10,
+    "visitor": 10,
 }
 
+ADJUSTABLE_GROUPS = ("alarm", "motion", "stranger", "known", "employee")
+
 _MOTION_KINDS = {"human", "person", "face", "checkin", "motion"}
+
+def group_recency(
+    group: str, options: Mapping[str, Any] | None = None
+) -> int:
+    """Return the configured ON window for one recognition group."""
+    default = GROUP_RECENCY_SECONDS.get(group, 10)
+    if options:
+        try:
+            return max(1, int(options.get(f"recency_{group}", default)))
+        except (TypeError, ValueError):
+            pass
+    return default
 
 
 def _kind(event: Mapping[str, Any]) -> str:
