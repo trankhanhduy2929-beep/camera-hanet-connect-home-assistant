@@ -263,6 +263,7 @@ class HanetConnectPanel extends HTMLElement {
     this._error = "";
     this._timer = null;
     this._dialog = null;
+    this._faceDraft = null;
     this._renderStamp = Date.now();
     this._cameraSearch = "";
     this._identitySearch = "";
@@ -373,6 +374,7 @@ class HanetConnectPanel extends HTMLElement {
       if (event.target === this._dialog) this._dialog.close();
     });
     this._dialog.addEventListener("close", () => {
+      this._faceDraft = null;
       if (!this._dialog.open) this._dialog.innerHTML = "";
     });
     this._timer = window.setInterval(() => this.autoLoad(), 30000);
@@ -1187,6 +1189,8 @@ class HanetConnectPanel extends HTMLElement {
       this.openClipDialog(target.dataset.id);
     } else if (action === "event-recordings") {
       this.openRecordingsForEvent(target.dataset.id);
+    } else if (action === "event-add-face") {
+      this.openEventFaceDialog(target.dataset.id);
     } else if (action === "add-face") {
       this.openFaceDialog();
     } else if (action === "edit-face") {
@@ -1387,6 +1391,8 @@ class HanetConnectPanel extends HTMLElement {
   openEvent(eventId) {
     const item = this.findEvent(eventId);
     if (!item) return;
+    const kind = canonicalKind(item);
+    const canAddFace = Boolean(item.image) && !item.person_id && !["alarm", "plate"].includes(kind);
     this._dialog.innerHTML = `
       <div class="hc-dialog-head">
         <div><span class="hc-eyebrow">${esc(kindLabel(item))}</span><h2>${esc(eventTitle(item))}</h2></div>
@@ -1404,6 +1410,9 @@ class HanetConnectPanel extends HTMLElement {
         </div>
         <div class="hc-dialog-actions">
           <button class="hc-secondary-button" type="button" data-action="close-dialog">Đóng</button>
+          ${canAddFace ? `<button class="hc-secondary-button" type="button" data-action="event-add-face" data-id="${esc(item.id)}">
+            <ha-icon icon="mdi:account-plus-outline"></ha-icon><span>Thêm vào FaceID</span>
+          </button>` : ""}
           <button class="hc-primary-button" type="button" data-action="event-recordings" data-id="${esc(item.id)}">
             <ha-icon icon="mdi:filmstrip"></ha-icon><span>Xem ghi hình sự kiện</span>
           </button>
@@ -1776,12 +1785,37 @@ class HanetConnectPanel extends HTMLElement {
     this._dialog.showModal();
   }
 
-  openFaceDialog(personId = "") {
+  openEventFaceDialog(eventId) {
+    const event = this.findEvent(eventId);
+    if (!event?.image) return;
+    const kind = canonicalKind(event);
+    this.openFaceDialog("", {
+      name: event.person_name || "",
+      place_id: event.place_id || "",
+      person_type: kind === "employee" ? 0 : 1,
+      image: event.image,
+    });
+  }
+
+  async eventImageData() {
+    const draft = this._faceDraft;
+    if (!draft?.image) return "";
+    if (draft.imageData) return draft.imageData;
+    const response = await fetch(draft.image, { credentials: "same-origin" });
+    if (!response.ok) throw new Error("Không tải được ảnh sự kiện");
+    draft.imageData = await fileToDataUrl(await response.blob());
+    return draft.imageData;
+  }
+
+  openFaceDialog(personId = "", draft = null) {
     const person = (this._data?.people || []).find((item) => String(item.id) === String(personId));
     const places = this.places();
     const departments = this._data?.departments || [];
     const editing = Boolean(person);
-    const placeValue = person?.place_id || places[0]?.id || "";
+    const faceImage = person?.image || draft?.image || "";
+    const placeValue = person?.place_id || draft?.place_id || places[0]?.id || "";
+    const personType = editing ? Number(person?.type) : Number(draft?.person_type ?? 0);
+    this._faceDraft = !editing && draft?.image ? { ...draft, imageData: "" } : null;
     this._dialog.innerHTML = `
       <div class="hc-dialog-head">
         <div><span class="hc-eyebrow">FaceID</span><h2>${editing ? "Sửa danh tính" : "Thêm FaceID"}</h2></div>
@@ -1789,11 +1823,11 @@ class HanetConnectPanel extends HTMLElement {
       </div>
       <div class="hc-dialog-body">
         <form data-form="face" data-person-id="${esc(personId)}">
-          <img class="hc-face-preview" data-face-preview src="${esc(person?.image || "")}" alt="Ảnh khuôn mặt" ${person?.image ? "" : "hidden"}>
+          <img class="hc-face-preview" data-face-preview src="${esc(faceImage)}" alt="Ảnh khuôn mặt" ${faceImage ? "" : "hidden"}>
           <div class="hc-field-grid">
             <label class="hc-field">
               <span>Tên</span>
-              <input name="name" required maxlength="120" value="${esc(person?.name || "")}">
+              <input name="name" required maxlength="120" value="${esc(person?.name || draft?.name || "")}">
             </label>
             <label class="hc-field">
               <span>Địa điểm</span>
@@ -1804,8 +1838,8 @@ class HanetConnectPanel extends HTMLElement {
             <label class="hc-field">
               <span>Loại</span>
               <select name="person_type">
-                <option value="0" ${Number(person?.type) === 0 || !editing ? "selected" : ""}>Người nhà / nhân viên</option>
-                <option value="1" ${Number(person?.type) === 1 ? "selected" : ""}>Khách</option>
+                <option value="0" ${personType === 0 ? "selected" : ""}>Người nhà / nhân viên</option>
+                <option value="1" ${personType === 1 ? "selected" : ""}>Khách</option>
               </select>
             </label>
             <label class="hc-field">
@@ -1844,10 +1878,10 @@ class HanetConnectPanel extends HTMLElement {
             </label>
           </div>
           <label class="hc-field">
-            <span>${editing ? "Ảnh mới (không bắt buộc)" : "Ảnh khuôn mặt"}</span>
-            <input type="file" name="image" accept="image/jpeg,image/png" data-preview="face" ${editing ? "" : "required"}>
+            <span>${editing ? "Ảnh mới (không bắt buộc)" : draft?.image ? "Ảnh khuôn mặt (từ sự kiện, có thể thay)" : "Ảnh khuôn mặt"}</span>
+            <input type="file" name="image" accept="image/jpeg,image/png" data-preview="face" ${editing || faceImage ? "" : "required"}>
           </label>
-          <p class="hc-dialog-note">JPEG hoặc PNG, tối đa 6 MB. Nên dùng ảnh chân dung rõ mặt.</p>
+          <p class="hc-dialog-note">${draft?.image ? "Ảnh đang dùng là ảnh chụp từ sự kiện. Chọn tệp khác nếu muốn thay; JPEG hoặc PNG, tối đa 6 MB." : "JPEG hoặc PNG, tối đa 6 MB. Nên dùng ảnh chân dung rõ mặt."}</p>
           <div class="hc-dialog-actions">
             <button class="hc-secondary-button" type="button" data-action="close-dialog">Huỷ</button>
             <button class="hc-primary-button" type="submit"><ha-icon icon="mdi:content-save-outline"></ha-icon><span>${editing ? "Lưu thay đổi" : "Thêm FaceID"}</span></button>
@@ -1855,14 +1889,14 @@ class HanetConnectPanel extends HTMLElement {
         </form>
       </div>`;
     this.attachImageFallbacks();
-    this._dialog.showModal();
+    if (!this._dialog.open) this._dialog.showModal();
   }
 
   async submitFace(form, editing) {
     const button = form.querySelector('button[type="submit"]');
     const payload = Object.fromEntries(new FormData(form).entries());
     const file = form.querySelector('input[type="file"]')?.files?.[0];
-    if (!editing && !file) {
+    if (!editing && !file && !this._faceDraft?.image) {
       this.toast("Chọn ảnh khuôn mặt trước khi thêm", true);
       return;
     }
@@ -1884,6 +1918,9 @@ class HanetConnectPanel extends HTMLElement {
       if (file) {
         message.image = await fileToDataUrl(file);
         message.filename = file.name;
+      } else if (!editing && this._faceDraft?.image) {
+        message.image = await this.eventImageData();
+        message.filename = "event.jpg";
       }
       if (editing) {
         const person = (this._data?.people || []).find((item) => String(item.id) === String(form.dataset.personId));
