@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import base64
 import binascii
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import urlencode
 
+import aiohttp
 import voluptuous as vol
 from aiohttp import web
 from homeassistant.components import frontend, websocket_api
@@ -46,6 +49,11 @@ _FACE_CREATE_SCHEMA = {
     ),
     vol.Optional("department_id", default=""): str,
     vol.Optional("alias_id", default=""): str,
+    vol.Optional("sex", default=0): vol.All(vol.Coerce(int), vol.In((0, 1))),
+    vol.Optional("title", default=""): str,
+    vol.Optional("phone", default=""): str,
+    vol.Optional("email", default=""): str,
+    vol.Optional("dob", default=""): str,
 }
 _FACE_UPDATE_SCHEMA = {
     "type": "hanet_connect/panel/face_update",
@@ -60,6 +68,11 @@ _FACE_UPDATE_SCHEMA = {
     ),
     vol.Optional("department_id"): str,
     vol.Optional("alias_id"): str,
+    vol.Optional("sex"): vol.All(vol.Coerce(int), vol.In((0, 1))),
+    vol.Optional("title"): str,
+    vol.Optional("phone"): str,
+    vol.Optional("email"): str,
+    vol.Optional("dob"): str,
 }
 _FACE_DELETE_SCHEMA = {
     "type": "hanet_connect/panel/face_delete",
@@ -83,10 +96,31 @@ _REFRESH_SCHEMA = {
     "type": "hanet_connect/panel/refresh",
     vol.Optional("entry_id"): str,
 }
+_EVENTS_SCHEMA = {
+    "type": "hanet_connect/panel/events",
+    vol.Optional("entry_id"): str,
+    vol.Optional("day"): str,
+    vol.Optional("device_id"): str,
+    vol.Optional("limit", default=2000): vol.All(
+        vol.Coerce(int), vol.Range(min=1, max=2000)
+    ),
+}
+_RECORDINGS_SCHEMA = {
+    "type": "hanet_connect/panel/recordings",
+    vol.Optional("entry_id"): str,
+    vol.Optional("day"): str,
+    vol.Optional("device_id"): str,
+    vol.Optional("source", default="cloud"): vol.In(("cloud",)),
+}
+
+_CLIP_CACHE_TTL = 30
+_CLIP_CACHE: dict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = {}
 
 async def async_register_panel(hass: HomeAssistant) -> None:
-    """Register the sidebar panel, websocket API and media view once."""
+    """Register the sidebar panel, websocket API and media views once."""
     hass.http.register_view(HanetMediaView(hass))
+    hass.http.register_view(HanetClipThumbView(hass))
+    hass.http.register_view(HanetRecordingView(hass))
     await hass.http.async_register_static_paths(
         [
             StaticPathConfig(
@@ -119,6 +153,8 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         websocket_face_delete,
         websocket_settings,
         websocket_refresh,
+        websocket_events,
+        websocket_recordings,
     ):
         websocket_api.async_register_command(hass, handler)
 
@@ -144,22 +180,40 @@ def _error(
 ) -> None:
     connection.send_error(msg["id"], "not_found", message)
 
+def _item_key(value: str) -> str:
+    """Encode an opaque item id so it is safe in one URL path segment."""
+    return base64.urlsafe_b64encode(value.encode()).decode().rstrip("=")
+
+
+def _decode_item_key(value: str) -> str:
+    try:
+        return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode()
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        return value
+
+
 def _event_item(event: dict[str, Any]) -> dict[str, Any]:
     event_id = str(event.get("id") or "")
     return {
         "id": event_id,
         "kind": event.get("kind"),
         "kind_name": event.get("kind_name"),
+        "source": event.get("source"),
+        "recognized": bool(event.get("recognized")),
         "person_id": event.get("person_id"),
         "person_name": event.get("person_name"),
+        "person_title": event.get("person_title"),
+        "title": event.get("title"),
         "device_id": event.get("device_id"),
         "device_name": event.get("device_name"),
         "place_id": event.get("place_id"),
         "place_name": event.get("place_name"),
         "occurred_at": event.get("occurred_at"),
+        "received_at": event.get("received_at"),
         "has_image": bool(event.get("image_url")),
-        "image": f"{MEDIA_URL}/event/{quote(event_id, safe='')}" if event_id else "",
+        "image": f"{MEDIA_URL}/event/{_item_key(event_id)}" if event_id else "",
     }
+
 
 def _person_item(person: dict[str, Any]) -> dict[str, Any]:
     person_id = str(person.get("id") or "")
@@ -168,13 +222,46 @@ def _person_item(person: dict[str, Any]) -> dict[str, Any]:
         "name": person.get("name"),
         "type": person.get("type"),
         "type_name": person.get("type_name"),
+        "sex": person.get("sex"),
+        "title": person.get("title"),
+        "phone": person.get("phone"),
+        "email": person.get("email"),
+        "dob": person.get("dob"),
         "department_id": person.get("department_id"),
         "department": person.get("department"),
         "place_id": person.get("place_id"),
         "alias_id": person.get("alias_id"),
         "enabled": person.get("enabled", True),
         "has_image": bool(person.get("image_url")),
-        "image": f"{MEDIA_URL}/person/{quote(person_id, safe='')}" if person_id else "",
+        "image": f"{MEDIA_URL}/person/{_item_key(person_id)}" if person_id else "",
+    }
+
+
+def _clip_item(clip: dict[str, Any], day: str) -> dict[str, Any]:
+    device_id = str(clip.get("device_id") or "")
+    file_path = str(clip.get("file") or "")
+    files = {"device_id": device_id, "file": file_path, "day": day}
+    playback = f"{MEDIA_URL}/recording?{urlencode(files)}" if device_id and file_path else ""
+    thumbnail = (
+        f"{MEDIA_URL}/clip?{urlencode(files)}"
+        if device_id and file_path and clip.get("thumbnail_url")
+        else ""
+    )
+    return {
+        "id": str(clip.get("id") or file_path),
+        "event_id": clip.get("event_id"),
+        "device_id": device_id,
+        "device_name": clip.get("device_name"),
+        "place_id": clip.get("place_id"),
+        "place_name": clip.get("place_name"),
+        "timestamp": clip.get("timestamp"),
+        "duration": clip.get("duration"),
+        "day": day,
+        "source": "cloud",
+        "thumbnail": thumbnail,
+        "playback": playback,
+        "download": f"{playback}&download=1" if playback else "",
+        "has_file": bool(file_path),
     }
 
 def _snapshot(hass: HomeAssistant, entry: Any) -> dict[str, Any]:
@@ -207,6 +294,14 @@ def _snapshot(hass: HomeAssistant, entry: Any) -> dict[str, Any]:
                 "camera_entity": cameras_for[0] if cameras_for else "",
             }
         )
+    people = [_person_item(item) for item in coordinator.people]
+    places: dict[str, str] = {}
+    for device in devices:
+        if device["place_id"]:
+            places[str(device["place_id"])] = device["place_name"] or "Địa điểm"
+    for person in people:
+        if person.get("place_id"):
+            places.setdefault(str(person["place_id"]), f"Địa điểm {person['place_id']}")
     return {
         "entry_id": entry.entry_id,
         "entry_title": entry.title,
@@ -220,8 +315,12 @@ def _snapshot(hass: HomeAssistant, entry: Any) -> dict[str, Any]:
             "people": len(coordinator.people),
         },
         "devices": devices,
+        "places": [
+            {"id": place_id, "name": name}
+            for place_id, name in sorted(places.items(), key=lambda item: item[1])
+        ],
         "events": [_event_item(item) for item in coordinator.events],
-        "people": [_person_item(item) for item in coordinator.people],
+        "people": people,
         "departments": [
             {
                 "id": str(item.get("id") or ""),
@@ -287,6 +386,11 @@ def _face_fields(msg: dict[str, Any]) -> dict[str, Any]:
             "type": msg.get("person_type"),
             "alias_id": msg.get("alias_id"),
             "department_id": msg.get("department_id"),
+            "sex": msg.get("sex"),
+            "title": msg.get("title"),
+            "phone": msg.get("phone"),
+            "email": msg.get("email"),
+            "dob": msg.get("dob"),
         }.items()
         if value not in (None, "")
     }
@@ -389,6 +493,126 @@ async def websocket_face_delete(
         return
     connection.send_result(msg["id"], {"result": result, "snapshot": _snapshot(hass, entry)})
 
+def _today() -> str:
+    return datetime.now().astimezone().date().isoformat()
+
+
+def _event_identity(event: dict[str, Any]) -> str:
+    return str(event.get("id") or "") or "|".join(
+        str(event.get(key) or "")
+        for key in ("device_id", "person_id", "occurred_at", "image_url")
+    )
+
+
+def _merge_events(
+    primary: list[dict[str, Any]], secondary: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for event in [*primary, *secondary]:
+        identity = _event_identity(event)
+        if identity and identity in seen:
+            continue
+        if identity:
+            seen.add(identity)
+        merged.append(event)
+    merged.sort(
+        key=lambda item: str(item.get("occurred_at") or item.get("received_at") or ""),
+        reverse=True,
+    )
+    return merged
+
+
+async def _cached_recordings(entry: Any, day: str) -> list[dict[str, Any]]:
+    key = (str(entry.entry_id), day)
+    cached = _CLIP_CACHE.get(key)
+    if cached and time.monotonic() - cached[0] < _CLIP_CACHE_TTL:
+        return [dict(clip) for clip in cached[1]]
+    clips = await entry.runtime_data.client.async_recordings(day)
+    clips.sort(
+        key=lambda clip: str(clip.get("timestamp") or ""),
+        reverse=True,
+    )
+    _CLIP_CACHE[key] = (time.monotonic(), [dict(clip) for clip in clips])
+    return [dict(clip) for clip in clips]
+
+
+@websocket_api.websocket_command(_EVENTS_SCHEMA)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_events(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return normalized events for one day without exposing cloud URLs."""
+    entry = _entry_for_msg(hass, msg)
+    if entry is None:
+        _error(connection, msg, "No loaded HANET Connect entry")
+        return
+    day = str(msg.get("day") or _today())
+    try:
+        rows = await entry.runtime_data.client.async_events(
+            limit=int(msg.get("limit") or 2000), day=day
+        )
+    except Exception as err:  # noqa: BLE001
+        connection.send_error(msg["id"], "events_failed", str(err))
+        return
+    events = rows
+    if day == _today():
+        events = _merge_events(entry.runtime_data.coordinator.events, rows)
+    device_id = str(msg.get("device_id") or "")
+    if device_id:
+        events = [
+            event
+            for event in events
+            if str(event.get("device_id") or "") == device_id
+        ]
+    connection.send_result(
+        msg["id"],
+        {
+            "day": day,
+            "events": [_event_item(event) for event in events],
+        },
+    )
+
+
+@websocket_api.websocket_command(_RECORDINGS_SCHEMA)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_recordings(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return cloud recording clips for one day."""
+    entry = _entry_for_msg(hass, msg)
+    if entry is None:
+        _error(connection, msg, "No loaded HANET Connect entry")
+        return
+    day = str(msg.get("day") or _today())
+    try:
+        clips = await _cached_recordings(entry, day)
+    except Exception as err:  # noqa: BLE001
+        connection.send_error(msg["id"], "recordings_failed", str(err))
+        return
+    device_id = str(msg.get("device_id") or "")
+    if device_id:
+        clips = [
+            clip
+            for clip in clips
+            if str(clip.get("device_id") or "") == device_id
+        ]
+    connection.send_result(
+        msg["id"],
+        {
+            "day": day,
+            "source": "cloud",
+            "clips": [_clip_item(clip, day) for clip in clips],
+        },
+    )
+
+
 @websocket_api.websocket_command(_SETTINGS_SCHEMA)
 @websocket_api.require_admin
 @websocket_api.async_response
@@ -429,6 +653,20 @@ async def websocket_refresh(
     await entry.runtime_data.coordinator.async_request_refresh()
     connection.send_result(msg["id"], _snapshot(hass, entry))
 
+def _admin_request(request: web.Request) -> bool:
+    user = request.get("hass_user")
+    return user is None or bool(user.is_admin)
+
+
+def _loaded_entries(hass: HomeAssistant) -> list[Any]:
+    return [
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry.state is ConfigEntryState.LOADED
+        and getattr(entry.runtime_data, "coordinator", None) is not None
+    ]
+
+
 class HanetMediaView(HomeAssistantView):
     """Proxy event and FaceID images without exposing HANET URLs."""
 
@@ -443,22 +681,17 @@ class HanetMediaView(HomeAssistantView):
         self, request: web.Request, kind: str, item_id: str
     ) -> web.Response:
         """Return one authenticated image."""
-        user = request.get("hass_user")
-        if user is not None and not user.is_admin:
+        if not _admin_request(request):
             return web.Response(status=403)
-        entry = self.hass.config_entries.async_entries(DOMAIN)
-        for candidate in entry:
-            if candidate.state is not ConfigEntryState.LOADED:
-                continue
-            coordinator = getattr(candidate.runtime_data, "coordinator", None)
-            if coordinator is None:
-                continue
+        wanted = _decode_item_key(item_id)
+        for candidate in _loaded_entries(self.hass):
+            coordinator = candidate.runtime_data.coordinator
             if kind == "event":
                 item = next(
                     (
                         row
                         for row in coordinator.events
-                        if str(row.get("id") or "") == item_id
+                        if str(row.get("id") or "") == wanted
                     ),
                     None,
                 )
@@ -468,7 +701,7 @@ class HanetMediaView(HomeAssistantView):
                     (
                         row
                         for row in coordinator.people
-                        if str(row.get("id") or "") == item_id
+                        if str(row.get("id") or "") == wanted
                     ),
                     None,
                 )
@@ -486,6 +719,133 @@ class HanetMediaView(HomeAssistantView):
             return web.Response(
                 body=body,
                 content_type=content_type or "image/jpeg",
-                headers={"Cache-Control": "private, max-age=60"},
+                headers={"Cache-Control": "private, max-age=120"},
             )
+        return web.Response(status=404)
+
+
+class HanetClipThumbView(HomeAssistantView):
+    """Proxy Cloud recording thumbnails through Home Assistant authentication."""
+
+    url = MEDIA_URL + "/clip"
+    name = "api:hanet_connect:media_clip"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def get(self, request: web.Request) -> web.Response:
+        """Return the thumbnail for one cloud clip."""
+        if not _admin_request(request):
+            return web.Response(status=403)
+        device_id = str(request.query.get("device_id") or "")
+        file_path = str(request.query.get("file") or "")
+        day = str(request.query.get("day") or _today())
+        if not device_id or not file_path:
+            return web.Response(status=400)
+        for candidate in _loaded_entries(self.hass):
+            try:
+                clips = await _cached_recordings(candidate, day)
+            except Exception:  # noqa: BLE001
+                continue
+            clip = next(
+                (
+                    item
+                    for item in clips
+                    if str(item.get("device_id") or "") == device_id
+                    and str(item.get("file") or "") == file_path
+                ),
+                None,
+            )
+            thumbnail = clip.get("thumbnail_url") if clip else None
+            if not thumbnail:
+                continue
+            try:
+                body, content_type = await candidate.runtime_data.client.async_media(
+                    str(thumbnail)
+                )
+            except Exception:  # noqa: BLE001
+                return web.Response(status=502)
+            return web.Response(
+                body=body,
+                content_type=content_type or "image/jpeg",
+                headers={"Cache-Control": "private, max-age=120"},
+            )
+        return web.Response(status=404)
+
+
+class HanetRecordingView(HomeAssistantView):
+    """Stream a Cloud recording without exposing its signed HANET URL."""
+
+    url = MEDIA_URL + "/recording"
+    name = "api:hanet_connect:media_recording"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def get(self, request: web.Request) -> web.StreamResponse:
+        """Proxy one cloud clip, forwarding browser Range requests."""
+        if not _admin_request(request):
+            return web.Response(status=403)
+        device_id = str(request.query.get("device_id") or "")
+        file_path = str(request.query.get("file") or "")
+        if (
+            not device_id
+            or not file_path.startswith(f"/{device_id}/")
+            or not file_path.lower().endswith(".mp4")
+            or ".." in file_path
+        ):
+            return web.Response(status=400)
+        for candidate in _loaded_entries(self.hass):
+            client = candidate.runtime_data.client
+            try:
+                upstream_url = await client.async_recording_url(device_id, file_path)
+            except Exception:  # noqa: BLE001
+                continue
+            headers = {}
+            requested_range = request.headers.get("Range")
+            if requested_range:
+                headers["Range"] = requested_range
+            timeout = aiohttp.ClientTimeout(total=None, connect=15, sock_read=60)
+            try:
+                upstream = await client.session.get(
+                    upstream_url, headers=headers, timeout=timeout
+                )
+            except (aiohttp.ClientError, TimeoutError):
+                return web.Response(status=502)
+            async with upstream:
+                if upstream.status >= 400:
+                    return web.Response(status=502)
+                response_headers = {}
+                for header in (
+                    "Content-Type",
+                    "Content-Length",
+                    "Content-Range",
+                    "Accept-Ranges",
+                ):
+                    value = upstream.headers.get(header)
+                    if value:
+                        response_headers[header] = value
+                if "Content-Type" not in response_headers:
+                    response_headers["Content-Type"] = "video/mp4"
+                response_headers.setdefault("Cache-Control", "private, max-age=300")
+                if str(request.query.get("download") or "") in {
+                    "1",
+                    "true",
+                    "yes",
+                }:
+                    filename = file_path.rsplit("/", 1)[-1] or "hanet-clip.mp4"
+                    response_headers["Content-Disposition"] = (
+                        f'attachment; filename="{filename}"'
+                    )
+                response = web.StreamResponse(
+                    status=upstream.status,
+                    headers=response_headers,
+                )
+                await response.prepare(request)
+                async for chunk in upstream.content.iter_chunked(64 * 1024):
+                    await response.write(chunk)
+                await response.write_eof()
+                return response
         return web.Response(status=404)

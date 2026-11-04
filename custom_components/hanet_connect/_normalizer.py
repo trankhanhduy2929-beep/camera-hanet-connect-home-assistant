@@ -271,8 +271,15 @@ def normalize_person(raw: Mapping[str, Any]) -> dict[str, Any]:
         ),
         "department": pick_loose(raw, "department_name", "departmentName"),
         "alias_id": pick_loose(raw, "alias_id", "aliasID", "custom_id", "customId"),
+        "sex": pick_loose(raw, "sex", "gender"),
+        "title": pick_loose(
+            raw, "title", "position", "job_title", "jobTitle"
+        ),
         "phone": pick_loose(raw, "phone", "phone_number", "phoneNumber"),
         "email": pick_loose(raw, "email"),
+        "dob": pick_loose(
+            raw, "dob", "birthday", "date_of_birth", "dateOfBirth"
+        ),
         "enabled": to_bool(pick_loose(raw, "enable", "enabled", "active"), default=True),
         "created_at": pick_loose(raw, "created_at", "createdAt"),
         "raw": dict(raw),

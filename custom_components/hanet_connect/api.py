@@ -314,9 +314,12 @@ class HanetGatewayClient:
 
         await asyncio.gather(*(load(device) for device in devices))
 
-    async def async_events(self, *, limit: int = 250) -> list[dict[str, Any]]:
-        """Return normalized recognition history directly from HANET Cloud."""
-        day = datetime.now().astimezone().date().isoformat()
+    async def async_events(
+        self, *, limit: int = 250, day: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Return normalized recognition history for one calendar day."""
+        today = datetime.now().astimezone().date().isoformat()
+        selected_day = day or today
         places = self._places or await self._load_places()
         size = min(max(int(limit), 1), 2000)
         responses = await asyncio.gather(
@@ -325,7 +328,7 @@ class HanetGatewayClient:
                     "tracking_access_day",
                     {
                         "place_id": place["id"],
-                        "day": day,
+                        "day": selected_day,
                         "size": size,
                         "page": 1,
                         "types": [],
@@ -334,7 +337,11 @@ class HanetGatewayClient:
                 for place in places
             )
         )
-        if places and all(not response for response in responses):
+        if (
+            selected_day == today
+            and places
+            and all(not response for response in responses)
+        ):
             return [dict(event) for event in self._events]
         events: list[dict[str, Any]] = []
         seen: set[str] = set()
@@ -365,8 +372,10 @@ class HanetGatewayClient:
             ),
             reverse=True,
         )
-        self._events = events[: min(max(int(limit), 1), 2000)]
-        return [dict(event) for event in self._events]
+        events = events[: min(max(int(limit), 1), 2000)]
+        if selected_day == today:
+            self._events = events
+        return [dict(event) for event in events]
 
     async def async_event_stream(
         self, *, last_event_id: str | None = None
@@ -465,6 +474,7 @@ class HanetGatewayClient:
                                 or entry.get("file")
                                 or ""
                             ),
+                            "event_id": str(entry.get("event_id") or ""),
                             "device_id": str(device["id"]),
                             "device_name": device.get("name"),
                             "place_id": device.get("place_id"),
@@ -478,6 +488,32 @@ class HanetGatewayClient:
                         }
                     )
         return clips
+
+    async def async_recording_url(self, device_id: str, file_path: str) -> str:
+        """Exchange one cloud recording path for a short-lived HTTPS URL."""
+        if self._device(device_id) is None:
+            raise HanetGatewayError("Unknown HANET device", status=404)
+        parsed = urlparse(file_path)
+        if parsed.scheme in {"https", "http"} and parsed.hostname:
+            hostname = parsed.hostname.casefold()
+            if hostname.endswith(".hanet.ai") and len(file_path) <= 4096:
+                return file_path
+        if (
+            not file_path.startswith(f"/{device_id}/")
+            or not file_path.lower().endswith(".mp4")
+            or ".." in file_path
+            or len(file_path) > 500
+        ):
+            raise HanetGatewayError("Invalid HANET recording path", status=400)
+        response = await self.async_call_endpoint(
+            "video_by_file", {"device_id": device_id, "file": file_path}
+        )
+        file_url = _recording_file_value(response)
+        if not file_url:
+            raise HanetGatewayError(
+                "HANET did not return a playable recording URL", status=502
+            )
+        return file_url
 
     async def async_media(self, url: str) -> tuple[bytes, str]:
         """Fetch a HANET-hosted image without exposing cloud credentials."""
@@ -1018,3 +1054,22 @@ def _ensure_mutation_success(result: Any) -> None:
             code=code,
             payload=result,
         )
+
+def _recording_file_value(value: Any) -> str:
+    """Pick the first playable recording URL from a HANET response."""
+    queue: list[Any] = [value]
+    seen: set[int] = set()
+    while queue:
+        current = queue.pop(0)
+        if isinstance(current, Mapping):
+            if id(current) in seen:
+                continue
+            seen.add(id(current))
+            for key in ("file", "video", "video_url", "videoUrl", "url"):
+                candidate = current.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    return candidate.strip()
+            queue.extend(current.values())
+        elif isinstance(current, list):
+            queue.extend(current)
+    return ""
