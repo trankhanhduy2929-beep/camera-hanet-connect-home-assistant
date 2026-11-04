@@ -34,6 +34,7 @@ from .groups import ADJUSTABLE_GROUPS, GROUP_LABELS, group_recency
 PANEL_URL = "hanet-connect"
 PANEL_NAME = "hanet-connect-panel"
 PANEL_STATIC = "/hanet_connect_static"
+PANEL_STATIC_VERSIONED = f"{PANEL_STATIC}/{INTEGRATION_VERSION}"
 MEDIA_URL = "/api/hanet_connect/media"
 MAX_FACE_BYTES = 6 * 1024 * 1024
 
@@ -145,7 +146,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
     await hass.http.async_register_static_paths(
         [
             StaticPathConfig(
-                PANEL_STATIC,
+                PANEL_STATIC_VERSIONED,
                 str(Path(__file__).parent / "frontend"),
                 False,
             )
@@ -160,7 +161,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         config={
             "_panel_custom": {
                 "name": PANEL_NAME,
-                "module_url": f"{PANEL_STATIC}/panel.js?v={INTEGRATION_VERSION}",
+                "module_url": f"{PANEL_STATIC_VERSIONED}/panel.js",
                 "embed_iframe": False,
                 "trust_external": False,
             }
