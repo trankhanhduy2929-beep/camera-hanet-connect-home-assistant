@@ -66,7 +66,7 @@ def person_update_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     if not name:
         raise ValueError("Cần tên để cập nhật FaceID")
     payload: dict[str, Any] = {"person_id": person_id, "name": name}
-    person_type = _field(data, "type", "person_type", "personType")
+    person_type = _field(data, "person_type", "personType", "type")
     if person_type not in (None, ""):
         payload["type"] = _enum(person_type, "Loại FaceID")
     sex = _field(data, "sex", "gender")
