@@ -293,7 +293,7 @@ class HanetConnectPanel extends HTMLElement {
       if (event.target === this._dialog) this._dialog.close();
     });
     this._dialog.addEventListener("close", () => {
-      this._dialog.innerHTML = "";
+      if (!this._dialog.open) this._dialog.innerHTML = "";
     });
     this._timer = window.setInterval(() => this.autoLoad(), 30000);
     if (this._hass) this.load();
@@ -1214,7 +1214,8 @@ class HanetConnectPanel extends HTMLElement {
     this._recordings.error = "";
     this._recordingsRequest += 1;
     this._recordings.loading = false;
-    this.openTab("recordings", true);
+    this._tab = "recordings";
+    this.render();
     await this.loadRecordings({ resetLimit: true });
     const clip = this.recordingForEvent(event);
     if (clip) {
@@ -1301,7 +1302,7 @@ class HanetConnectPanel extends HTMLElement {
       </div>
       <div class="hc-dialog-body">
         <form data-form="face" data-person-id="${esc(personId)}">
-          <img class="hc-face-preview hc-img" data-face-preview src="${esc(person?.image || "")}" alt="Ảnh khuôn mặt" ${person?.image ? "" : "hidden"}>
+          <img class="hc-face-preview" data-face-preview src="${esc(person?.image || "")}" alt="Ảnh khuôn mặt" ${person?.image ? "" : "hidden"}>
           <div class="hc-field-grid">
             <label class="hc-field">
               <span>Tên</span>
