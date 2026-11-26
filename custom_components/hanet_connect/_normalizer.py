@@ -40,6 +40,27 @@ EVENT_KIND_NAMES = {
     "face": "Khuôn mặt",
     "other": "Sự kiện khác",
 }
+EVENT_ACTION_KIND_BY_NAME = {
+    "alarm_stranger": "alarm",
+    "checkin_employee": "employee",
+    "checkin_human": "human",
+    "checkin_license_plate": "plate",
+    "checkin_picture": "other",
+    "checkin_stranger": "stranger",
+    "checkin_visitor": "visitor",
+    "fire": "alarm",
+}
+WEBHOOK_PERSON_KIND_BY_CODE = {
+    0: "employee",
+    1: "visitor",
+    2: "visitor",
+    3: "alarm",
+    4: "human",
+    5: "stranger",
+    6: "other",
+    7: "other",
+    8: "other",
+}
 
 
 def unwrap(value: Any) -> Any:
@@ -373,14 +394,29 @@ def normalize_event(
     event_type_code: int | None = None
     if numeric_kind:
         event_type_code = int(float(kind_value))
+    kind: str | None = None
     if pick_loose(payload, "license_plate", "plate_number"):
         kind = "plate"
-    elif event_type_code is not None:
-        kind = EVENT_KIND_BY_CODE.get(event_type_code, "checkin")
-    elif kind_value in {None, ""}:
-        kind = "checkin"
-    else:
-        kind = str(kind_value)
+    data_type = _action_name(pick_loose(payload, "data_type", "dataType"))
+    action_type = _action_name(pick_loose(payload, "action_type", "actionType"))
+    if kind is None:
+        kind = EVENT_ACTION_KIND_BY_NAME.get(action_type)
+    if kind is None and data_type == "log":
+        person_type_code = _integer_code(
+            pick_loose(payload, "person_type", "personType")
+        )
+        if person_type_code is not None:
+            event_type_code = person_type_code
+            kind = WEBHOOK_PERSON_KIND_BY_CODE.get(person_type_code, "other")
+        else:
+            kind = "checkin"
+    if kind is None:
+        if event_type_code is not None:
+            kind = EVENT_KIND_BY_CODE.get(event_type_code, "checkin")
+        elif kind_value in {None, ""}:
+            kind = "checkin"
+        else:
+            kind = str(kind_value)
     image_url = pick_loose(
         payload,
         "detected_image_url",
@@ -528,6 +564,19 @@ def redact(value: Any) -> Any:
 
 def _canonical_key(value: str) -> str:
     return "".join(character for character in value.lower() if character.isalnum())
+
+
+def _action_name(value: Any) -> str:
+    return str(value or "").strip().casefold().replace("-", "_")
+
+
+def _integer_code(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None or value == "":
+        return None
+    try:
+        return int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        return None
 
 
 def _looks_like_event(value: Mapping[str, Any]) -> bool:
